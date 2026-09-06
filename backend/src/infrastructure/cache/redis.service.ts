@@ -30,6 +30,18 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     if (response !== 'PONG') throw new Error('Redis did not respond to ping');
   }
 
+  /** Atomically consume one request from a fixed-window rate limit. */
+  async consumeRateLimit(
+    domain: string,
+    identifier: string,
+    windowSeconds: number,
+  ): Promise<number> {
+    const key = this.key(`rate-limit:${domain}`, identifier);
+    const count = await this.client.incr(key);
+    if (count === 1) await this.client.expire(key, windowSeconds);
+    return count;
+  }
+
   key(domain: string, key: string): string {
     return `${domain}:${key}`;
   }

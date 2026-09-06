@@ -9,6 +9,19 @@ export const ErrorCode = {
   ServiceUnavailable: 'SERVICE_UNAVAILABLE',
   DatabaseUnavailable: 'DATABASE_UNAVAILABLE',
   CacheUnavailable: 'CACHE_UNAVAILABLE',
+  AuthInvalidCredentials: 'AUTH_INVALID_CREDENTIALS',
+  AuthAccountNotFound: 'AUTH_ACCOUNT_NOT_FOUND',
+  AuthPhoneAlreadyExists: 'AUTH_PHONE_ALREADY_EXISTS',
+  AuthEmailAlreadyExists: 'AUTH_EMAIL_ALREADY_EXISTS',
+  AuthAccountNotVerified: 'AUTH_ACCOUNT_NOT_VERIFIED',
+  AuthAccountSuspended: 'AUTH_ACCOUNT_SUSPENDED',
+  AuthAccountLocked: 'AUTH_ACCOUNT_LOCKED',
+  AuthOtpInvalid: 'AUTH_OTP_INVALID',
+  AuthOtpExpired: 'AUTH_OTP_EXPIRED',
+  AuthOtpMaxAttempts: 'AUTH_OTP_MAX_ATTEMPTS',
+  AuthRefreshTokenInvalid: 'AUTH_REFRESH_TOKEN_INVALID',
+  AuthSessionRevoked: 'AUTH_SESSION_REVOKED',
+  AuthRateLimited: 'AUTH_RATE_LIMITED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

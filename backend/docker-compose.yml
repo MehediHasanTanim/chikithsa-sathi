@@ -37,6 +37,8 @@ services:
       REDIS_URL: redis://redis:6379
       ENABLE_SWAGGER: 'true'
       TIMEZONE: Asia/Dhaka
+      JWT_ACCESS_SECRET: development-only-access-secret-replace-before-production
+      JWT_REFRESH_SECRET: development-only-refresh-secret-replace-before-production
     ports:
       - '3000:3000'
     depends_on:

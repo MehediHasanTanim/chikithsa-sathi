@@ -23,6 +23,11 @@ export const configuration = (environment: Environment) => ({
     refreshSecret: environment.JWT_REFRESH_SECRET,
     accessTtl: environment.JWT_ACCESS_TTL,
     refreshTtl: environment.JWT_REFRESH_TTL,
+    otpExpirySeconds: environment.OTP_EXPIRY_SECONDS,
+    otpMaxAttempts: environment.OTP_MAX_ATTEMPTS,
+    otpResendCooldownSeconds: environment.OTP_RESEND_COOLDOWN_SECONDS,
+    maxLoginAttempts: environment.AUTH_MAX_LOGIN_ATTEMPTS,
+    lockoutSeconds: environment.AUTH_LOCKOUT_SECONDS,
   },
   storage: {
     endpoint: environment.STORAGE_ENDPOINT,

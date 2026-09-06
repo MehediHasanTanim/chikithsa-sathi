@@ -1,6 +1,6 @@
 # Chamber Management backend
 
-Sprint 1 establishes the NestJS/Fastify, PostgreSQL, Prisma, and Redis foundation. Domain modules (authentication, users, chambers, and clinical workflows) are deliberately not included yet.
+Sprints 1–2 establish the NestJS/Fastify, PostgreSQL, Prisma, and Redis foundation plus secure account authentication. Clinical and chamber-domain modules are deliberately not included yet.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ From this directory:
 docker compose up --build
 ```
 
-The API waits for PostgreSQL and Redis before starting. Open:
+The API waits for PostgreSQL and Redis, applies committed Prisma migrations, and then starts. Open:
 
 - `http://localhost:3000/health/live` — process liveness only
 - `http://localhost:3000/health/ready` — PostgreSQL and Redis readiness
@@ -61,6 +61,26 @@ curl -i http://localhost:3000/health/live
 - Redis keys: services call `redis.key(domain, key)`; ioredis applies the `cm:{environment}:` prefix.
 - Pagination: `toOffsetPagination(page, limit)` clamps input and returns Prisma-ready `skip`/`take`.
 - Bangladesh phones: `isBangladeshPhone` accepts `01XXXXXXXXX`, `8801XXXXXXXXX`, and `+8801XXXXXXXXX` formats.
+
+## Authentication API
+
+All product routes are versioned under `/api/v1`.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/auth/register` | Creates a pending account and OTP challenge. |
+| POST | `/auth/verify-otp` | Activates the account after a valid OTP. |
+| POST | `/auth/resend-otp` | Replaces an unconsumed OTP after its cooldown. |
+| POST | `/auth/login` | Creates a device-aware session and returns token pair. |
+| POST | `/auth/refresh` | Rotates the refresh token and invalidates its predecessor. |
+| POST | `/auth/logout` | Requires an access token and revokes its session. |
+| GET/PATCH | `/users/me` | Reads or updates the authenticated user profile. |
+
+Passwords and OTPs are Argon2id hashes; raw values are never persisted or logged. Refresh tokens are also stored only as hashes. JWT payloads contain only the user ID, session ID, token version, and token type. Set distinct high-entropy JWT secrets before deploying; development-only values in `.env.example` are rejected in production.
+
+Login is limited to five requests per minute per phone/IP pair. Registration, OTP verification, and OTP resend are limited to five requests per ten minutes; registration OTPs expire after ten minutes, permit five attempts, and resends have a 60-second cooldown. An account is locked for 15 minutes after five failed password attempts. These values are configured through `.env`.
+
+The current `OtpDeliveryService` is a safe queue boundary: it receives the raw code only in memory and logs only the OTP record ID. Connect its implementation to the Sprint 3+ SMS/worker provider before enabling real user sign-up delivery.
 
 ## Quality hooks
 

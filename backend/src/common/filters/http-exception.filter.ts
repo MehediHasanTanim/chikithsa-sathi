@@ -22,7 +22,7 @@ export class HttpExceptionFilter extends BaseExceptionFilter {
     const request = context.getRequest<FastifyRequest>();
     const normalized = this.normalize(exception);
 
-    if (normalized.status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+    if (normalized.status >= 500) {
       this.logger.error(
         `${request.method} ${request.url} failed with ${normalized.status}`,
         exception instanceof Error ? exception.stack : undefined,
@@ -57,10 +57,20 @@ export class HttpExceptionFilter extends BaseExceptionFilter {
 
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       if (exception.code === 'P2002') {
-        return { status: HttpStatus.CONFLICT, code: ErrorCode.Conflict, message: 'A duplicate record exists', details: [] };
+        return {
+          status: HttpStatus.CONFLICT,
+          code: ErrorCode.Conflict,
+          message: 'A duplicate record exists',
+          details: [],
+        };
       }
       if (exception.code === 'P2025') {
-        return { status: HttpStatus.NOT_FOUND, code: ErrorCode.NotFound, message: 'The requested record was not found', details: [] };
+        return {
+          status: HttpStatus.NOT_FOUND,
+          code: ErrorCode.NotFound,
+          message: 'The requested record was not found',
+          details: [],
+        };
       }
     }
 
@@ -92,17 +102,17 @@ export class HttpExceptionFilter extends BaseExceptionFilter {
   private codeForStatus(status: number, validationError: boolean): string {
     if (validationError) return ErrorCode.Validation;
     switch (status) {
-      case HttpStatus.BAD_REQUEST:
+      case 400:
         return ErrorCode.BadRequest;
-      case HttpStatus.UNAUTHORIZED:
+      case 401:
         return ErrorCode.Unauthorized;
-      case HttpStatus.FORBIDDEN:
+      case 403:
         return ErrorCode.Forbidden;
-      case HttpStatus.NOT_FOUND:
+      case 404:
         return ErrorCode.NotFound;
-      case HttpStatus.CONFLICT:
+      case 409:
         return ErrorCode.Conflict;
-      case HttpStatus.SERVICE_UNAVAILABLE:
+      case 503:
         return ErrorCode.ServiceUnavailable;
       default:
         return ErrorCode.Internal;

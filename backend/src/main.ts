@@ -21,7 +21,8 @@ async function bootstrap(): Promise<void> {
 
   app.enableShutdownHooks();
   await app.register(helmet);
-  app.addHook('onRequest', (request, reply, done) => {
+  const fastify = app.getHttpAdapter().getInstance();
+  fastify.addHook('onRequest', (request, reply, done) => {
     request.requestId = getOrCreateRequestId(request);
     reply.header(REQUEST_ID_HEADER, request.requestId);
     done();

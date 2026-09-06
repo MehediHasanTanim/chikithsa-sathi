@@ -5,6 +5,8 @@ const requiredEnvironment = {
   PORT: '3000',
   DATABASE_URL: 'postgresql://chamber:chamber@localhost:5432/chamber_management?schema=public',
   REDIS_URL: 'redis://localhost:6379',
+  JWT_ACCESS_SECRET: 'development-only-access-secret-replace-before-production',
+  JWT_REFRESH_SECRET: 'development-only-refresh-secret-replace-before-production',
 };
 
 describe('environment validation', () => {
@@ -12,7 +14,6 @@ describe('environment validation', () => {
     const environment = validateEnvironment({
       ...requiredEnvironment,
       AI_API_KEY: '',
-      JWT_ACCESS_SECRET: '',
     });
 
     expect(environment.PORT).toBe(3000);
@@ -21,7 +22,7 @@ describe('environment validation', () => {
 
   it('fails fast when a required connection value is missing', () => {
     expect(() => {
-      const { REDIS_URL: _redisUrl, ...invalidEnvironment } = requiredEnvironment;
+      const invalidEnvironment = { ...requiredEnvironment, REDIS_URL: undefined };
       validateEnvironment(invalidEnvironment);
     }).toThrow('Invalid environment configuration');
   });

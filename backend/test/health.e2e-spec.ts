@@ -21,7 +21,8 @@ describe('Health endpoints (e2e)', () => {
       .compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
-    app.addHook('onRequest', (incomingRequest, reply, done) => {
+    const fastify = app.getHttpAdapter().getInstance();
+    fastify.addHook('onRequest', (incomingRequest, reply, done) => {
       incomingRequest.requestId = getOrCreateRequestId(incomingRequest);
       reply.header(REQUEST_ID_HEADER, incomingRequest.requestId);
       done();
