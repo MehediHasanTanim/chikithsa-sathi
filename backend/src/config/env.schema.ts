@@ -1,0 +1,64 @@
+import { z } from 'zod';
+
+const booleanFromEnvironment = z.enum(['true', 'false']).transform((value) => value === 'true');
+const optionalString = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().min(1).optional(),
+);
+const optionalUrl = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().url().optional(),
+);
+
+export const environmentSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  PORT: z.coerce.number().int().min(1).max(65535),
+  DATABASE_URL: z.string().url().startsWith('postgresql://'),
+  DATABASE_URL_TEST: z.string().url().startsWith('postgresql://').optional(),
+  REDIS_URL: z.string().url().startsWith('redis://'),
+  APP_NAME: z.string().min(1).default('Chamber Management API'),
+  APP_URL: z.string().url().default('http://localhost:3000'),
+  ENABLE_SWAGGER: booleanFromEnvironment.optional().default('true'),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'log', 'debug', 'verbose']).default('log'),
+  TIMEZONE: z.string().default('Asia/Dhaka'),
+  JWT_ACCESS_SECRET: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(32).optional(),
+  ),
+  JWT_REFRESH_SECRET: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(32).optional(),
+  ),
+  JWT_ACCESS_TTL: z.string().default('15m'),
+  JWT_REFRESH_TTL: z.string().default('30d'),
+  STORAGE_ENDPOINT: optionalUrl,
+  STORAGE_REGION: optionalString,
+  STORAGE_BUCKET: optionalString,
+  STORAGE_ACCESS_KEY: optionalString,
+  STORAGE_SECRET_KEY: optionalString,
+  AI_PROVIDER: optionalString,
+  AI_API_KEY: optionalString,
+  EMAIL_PROVIDER: optionalString,
+  EMAIL_FROM: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().email().optional(),
+  ),
+  SMS_PROVIDER: optionalString,
+  SMS_API_KEY: optionalString,
+  NOTIFICATIONS_ENABLED: booleanFromEnvironment.optional().default('false'),
+});
+
+export type Environment = z.infer<typeof environmentSchema>;
+
+export function validateEnvironment(config: Record<string, unknown>): Environment {
+  const parsed = environmentSchema.safeParse(config);
+
+  if (!parsed.success) {
+    const errors = parsed.error.issues
+      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      .join('; ');
+    throw new Error(`Invalid environment configuration: ${errors}`);
+  }
+
+  return parsed.data;
+}

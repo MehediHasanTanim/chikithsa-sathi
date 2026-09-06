@@ -1,0 +1,2 @@
+-- Sprint 1 baseline migration.
+-- Domain tables are deliberately introduced from Sprint 2 onward.

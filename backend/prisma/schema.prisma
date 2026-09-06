@@ -1,0 +1,11 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Sprint 1 intentionally has no domain models. The initial migration establishes
+// a deployable Prisma migration history; User and all clinical models begin in Sprint 2.
