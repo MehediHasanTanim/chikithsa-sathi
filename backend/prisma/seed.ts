@@ -1,6 +1,7 @@
 import { PrismaClient, type UserRole } from '@prisma/client';
 
 import { PERMISSIONS, ROLE_PERMISSIONS } from '../src/modules/permissions/permissions.constants';
+import { DIAGNOSIS_CATALOG } from '../src/modules/clinical/clinical.constants';
 
 const prisma = new PrismaClient();
 
@@ -36,8 +37,21 @@ async function main(): Promise<void> {
     }
   }
 
+  for (const diagnosis of DIAGNOSIS_CATALOG) {
+    await prisma.diagnosis.upsert({
+      where: { name: diagnosis.name },
+      update: { code: diagnosis.code, nameBangla: diagnosis.nameBangla, description: diagnosis.description },
+      create: {
+        code: diagnosis.code,
+        name: diagnosis.name,
+        nameBangla: diagnosis.nameBangla,
+        description: diagnosis.description,
+      },
+    });
+  }
+
   // eslint-disable-next-line no-console
-  console.log('Seeded roles and permissions.');
+  console.log('Seeded roles, permissions, and diagnosis catalog.');
 }
 
 main()

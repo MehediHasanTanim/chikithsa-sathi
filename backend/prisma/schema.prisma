@@ -393,6 +393,7 @@ model Patient {
   conditions   PatientCondition[]
   queueEntries QueueEntry[]
   encounters   Encounter[]
+  vitals       Vital[]
 
   @@index([phone])
   @@index([fullName])
@@ -611,7 +612,129 @@ model Encounter {
   appointment Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
   queueEntry  QueueEntry?   @relation(fields: [queueEntryId], references: [id], onDelete: SetNull)
 
+  notes           ClinicalNote[]
+  vitals          Vital[]
+  diagnoses       EncounterDiagnosis[]
+  investigations  Investigation[]
+
   @@index([chamberId, encounterDate])
   @@index([patientId, encounterDate])
   @@index([doctorId, encounterDate])
+}
+
+// ===== Sprint 9: Clinical Records =====
+
+enum ClinicalNoteType {
+  HISTORY
+  EXAMINATION
+  ASSESSMENT
+  PLAN
+  GENERAL
+}
+
+enum DiagnosisType {
+  PRIMARY
+  SECONDARY
+  DIFFERENTIAL
+}
+
+enum InvestigationStatus {
+  ORDERED
+  SAMPLE_COLLECTED
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+model ClinicalNote {
+  id            String           @id @default(uuid()) @db.Uuid
+  encounterId   String           @db.Uuid
+  type          ClinicalNoteType
+  content       String           @db.Text
+  contentBangla String?          @db.Text
+  createdById   String           @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  encounter Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  @@index([encounterId, type])
+}
+
+model Vital {
+  id          String   @id @default(uuid()) @db.Uuid
+  patientId   String   @db.Uuid
+  encounterId String   @db.Uuid
+
+  temperature       Decimal? @db.Decimal(5, 2)
+  systolicBP        Int?
+  diastolicBP       Int?
+  heartRate         Int?
+  respiratoryRate   Int?
+  oxygenSaturation  Decimal? @db.Decimal(5, 2)
+  weightKg          Decimal? @db.Decimal(6, 2)
+  heightCm          Decimal? @db.Decimal(6, 2)
+  bmi               Decimal? @db.Decimal(6, 2)
+
+  recordedById String   @db.Uuid
+  recordedAt   DateTime @default(now())
+
+  patient   Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounter Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, recordedAt])
+  @@index([encounterId])
+}
+
+model Diagnosis {
+  id          String  @id @default(uuid()) @db.Uuid
+  code        String? @db.VarChar(50)
+  name        String  @unique @db.VarChar(255)
+  nameBangla  String? @db.VarChar(255)
+  description String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  encounterDiagnoses EncounterDiagnosis[]
+
+  @@index([nameBangla])
+  @@index([code])
+}
+
+model EncounterDiagnosis {
+  id          String        @id @default(uuid()) @db.Uuid
+  encounterId String        @db.Uuid
+  diagnosisId String        @db.Uuid
+  type        DiagnosisType @default(SECONDARY)
+  notes       String?       @db.Text
+  createdAt   DateTime      @default(now())
+
+  encounter Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  diagnosis Diagnosis @relation(fields: [diagnosisId], references: [id])
+
+  @@unique([encounterId, diagnosisId])
+  @@index([encounterId, type])
+}
+
+model Investigation {
+  id           String              @id @default(uuid()) @db.Uuid
+  encounterId  String              @db.Uuid
+  name         String              @db.VarChar(255)
+  nameBangla   String?             @db.VarChar(255)
+  code         String?             @db.VarChar(100)
+  status       InvestigationStatus @default(ORDERED)
+  instructions String?             @db.Text
+  notes        String?             @db.Text
+  orderedAt    DateTime            @default(now())
+  completedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  encounter Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  @@index([encounterId])
+  @@index([name])
 }

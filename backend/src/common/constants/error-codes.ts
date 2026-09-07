@@ -53,6 +53,11 @@ export const ErrorCode = {
   EncounterInvalidTransition: 'ENCOUNTER_INVALID_STATE_TRANSITION',
   EncounterLocked: 'ENCOUNTER_LOCKED',
   EncounterInvalid: 'ENCOUNTER_INVALID',
+  VitalNotFound: 'VITAL_NOT_FOUND',
+  NoteNotFound: 'CLINICAL_NOTE_NOT_FOUND',
+  DiagnosisNotFound: 'DIAGNOSIS_NOT_FOUND',
+  InvestigationNotFound: 'INVESTIGATION_NOT_FOUND',
+  ClinicalInvalid: 'CLINICAL_INVALID',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
