@@ -52,6 +52,7 @@ model User {
   doctorProfile DoctorProfile?
   memberships   ChamberMembership[]
   uploadedFiles FileObject[]        @relation("FileUploader")
+  aiRequests    AIRequest[]         @relation("AIRequestedBy")
 
   @@index([status])
 }
@@ -170,16 +171,16 @@ model DoctorProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  verification       ProfessionalVerification?
-  chambersOwned      Chamber[]                 @relation("ChamberOwner")
-  chamberMemberships ChamberMembership[]
-  schedules          Schedule[]
-  appointments       Appointment[]
-  queueEntries       QueueEntry[]
-  encounters         Encounter[]
-  createdPrescriptions Prescription[] @relation("PrescriptionDoctor")
-  favoriteMedicines  DoctorMedicineFavorite[]
+  user                 User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verification         ProfessionalVerification?
+  chambersOwned        Chamber[]                 @relation("ChamberOwner")
+  chamberMemberships   ChamberMembership[]
+  schedules            Schedule[]
+  appointments         Appointment[]
+  queueEntries         QueueEntry[]
+  encounters           Encounter[]
+  createdPrescriptions Prescription[]            @relation("PrescriptionDoctor")
+  favoriteMedicines    DoctorMedicineFavorite[]
 
   @@index([specialization])
   @@index([bmdcNumber])
@@ -255,6 +256,8 @@ model Chamber {
   encounters    Encounter[]
   prescriptions Prescription[]
   payments      Payment[]
+  aiRequests    AIRequest[]
+  aiDrafts      AIDraft[]
 
   @@index([ownerDoctorId])
   @@index([status])
@@ -393,16 +396,18 @@ model Patient {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  chambers     PatientChamber[]
-  allergies    PatientAllergy[]
-  appointments Appointment[]
-  conditions   PatientCondition[]
-  queueEntries QueueEntry[]
-  encounters   Encounter[]
-  vitals       Vital[]
+  chambers          PatientChamber[]
+  allergies         PatientAllergy[]
+  appointments      Appointment[]
+  conditions        PatientCondition[]
+  queueEntries      QueueEntry[]
+  encounters        Encounter[]
+  vitals            Vital[]
   diagnosticReports DiagnosticReport[]
-  prescriptions Prescription[]
-  payments      Payment[]
+  prescriptions     Prescription[]
+  payments          Payment[]
+  aiRequests        AIRequest[]
+  aiDrafts          AIDraft[]
 
   @@index([phone])
   @@index([fullName])
@@ -518,8 +523,8 @@ model Appointment {
   encounter  Encounter?
   payments   Payment[]
 
-  @@index([chamberId, scheduledDate, status])
   @@unique([doctorId, scheduledAt])
+  @@index([chamberId, scheduledDate, status])
   @@index([patientId, scheduledAt])
 }
 
@@ -598,12 +603,12 @@ enum EncounterStatus {
 }
 
 model Encounter {
-  id            String          @id @default(uuid()) @db.Uuid
-  chamberId     String          @db.Uuid
-  patientId     String          @db.Uuid
-  doctorId      String          @db.Uuid
-  appointmentId String?         @unique @db.Uuid
-  queueEntryId  String?         @unique @db.Uuid
+  id            String  @id @default(uuid()) @db.Uuid
+  chamberId     String  @db.Uuid
+  patientId     String  @db.Uuid
+  doctorId      String  @db.Uuid
+  appointmentId String? @unique @db.Uuid
+  queueEntryId  String? @unique @db.Uuid
 
   encounterDate  DateTime        @db.Date
   status         EncounterStatus @default(DRAFT)
@@ -624,13 +629,15 @@ model Encounter {
   appointment Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
   queueEntry  QueueEntry?   @relation(fields: [queueEntryId], references: [id], onDelete: SetNull)
 
-  notes           ClinicalNote[]
-  vitals          Vital[]
-  diagnoses       EncounterDiagnosis[]
-  investigations  Investigation[]
-  reports         DiagnosticReport[]
-  prescriptions   Prescription[]
-  payments        Payment[]
+  notes          ClinicalNote[]
+  vitals         Vital[]
+  diagnoses      EncounterDiagnosis[]
+  investigations Investigation[]
+  reports        DiagnosticReport[]
+  prescriptions  Prescription[]
+  payments       Payment[]
+  aiRequests     AIRequest[]
+  aiDrafts       AIDraft[]
 
   @@index([chamberId, encounterDate])
   @@index([patientId, encounterDate])
@@ -683,15 +690,15 @@ enum DurationUnit {
 }
 
 model Medicine {
-  id                String   @id @default(uuid()) @db.Uuid
-  genericName       String   @db.VarChar(255)
-  genericNameBangla String?  @db.VarChar(255)
-  brandName         String?  @db.VarChar(255)
-  manufacturer      String?  @db.VarChar(255)
-  strength          String?  @db.VarChar(100)
-  dosageForm        String?  @db.VarChar(100)
-  route             String?  @db.VarChar(100)
-  isActive          Boolean  @default(true)
+  id                String  @id @default(uuid()) @db.Uuid
+  genericName       String  @db.VarChar(255)
+  genericNameBangla String? @db.VarChar(255)
+  brandName         String? @db.VarChar(255)
+  manufacturer      String? @db.VarChar(255)
+  strength          String? @db.VarChar(100)
+  dosageForm        String? @db.VarChar(100)
+  route             String? @db.VarChar(100)
+  isActive          Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -706,10 +713,10 @@ model Medicine {
 }
 
 model DoctorMedicineFavorite {
-  id         String   @id @default(uuid()) @db.Uuid
-  doctorId   String   @db.Uuid
-  medicineId String   @db.Uuid
-  usageCount Int      @default(0)
+  id         String @id @default(uuid()) @db.Uuid
+  doctorId   String @db.Uuid
+  medicineId String @db.Uuid
+  usageCount Int    @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -759,23 +766,23 @@ model Prescription {
 }
 
 model PrescriptionItem {
-  id                String                @id @default(uuid()) @db.Uuid
-  prescriptionId    String                @db.Uuid
-  medicineId        String?               @db.Uuid
-  itemType          PrescriptionItemType  @default(MEDICINE)
-  medicineName      String?               @db.VarChar(255)
-  strength          String?               @db.VarChar(100)
-  dosageForm        String?               @db.VarChar(100)
-  dosage            String?               @db.VarChar(100)
-  frequency         MedicineFrequency?
-  frequencyText     String?               @db.VarChar(255)
-  duration          Int?
-  durationUnit      DurationUnit?
-  quantity          Decimal?              @db.Decimal(10, 2)
-  route             String?               @db.VarChar(100)
-  instructions      String?               @db.Text
+  id                 String               @id @default(uuid()) @db.Uuid
+  prescriptionId     String               @db.Uuid
+  medicineId         String?              @db.Uuid
+  itemType           PrescriptionItemType @default(MEDICINE)
+  medicineName       String?              @db.VarChar(255)
+  strength           String?              @db.VarChar(100)
+  dosageForm         String?              @db.VarChar(100)
+  dosage             String?              @db.VarChar(100)
+  frequency          MedicineFrequency?
+  frequencyText      String?              @db.VarChar(255)
+  duration           Int?
+  durationUnit       DurationUnit?
+  quantity           Decimal?             @db.Decimal(10, 2)
+  route              String?              @db.VarChar(100)
+  instructions       String?              @db.Text
   instructionsBangla String?              @db.Text
-  sortOrder         Int                   @default(0)
+  sortOrder          Int                  @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -845,19 +852,19 @@ model ClinicalNote {
 }
 
 model Vital {
-  id          String   @id @default(uuid()) @db.Uuid
-  patientId   String   @db.Uuid
-  encounterId String   @db.Uuid
+  id          String @id @default(uuid()) @db.Uuid
+  patientId   String @db.Uuid
+  encounterId String @db.Uuid
 
-  temperature       Decimal? @db.Decimal(5, 2)
-  systolicBP        Int?
-  diastolicBP       Int?
-  heartRate         Int?
-  respiratoryRate   Int?
-  oxygenSaturation  Decimal? @db.Decimal(5, 2)
-  weightKg          Decimal? @db.Decimal(6, 2)
-  heightCm          Decimal? @db.Decimal(6, 2)
-  bmi               Decimal? @db.Decimal(6, 2)
+  temperature      Decimal? @db.Decimal(5, 2)
+  systolicBP       Int?
+  diastolicBP      Int?
+  heartRate        Int?
+  respiratoryRate  Int?
+  oxygenSaturation Decimal? @db.Decimal(5, 2)
+  weightKg         Decimal? @db.Decimal(6, 2)
+  heightCm         Decimal? @db.Decimal(6, 2)
+  bmi              Decimal? @db.Decimal(6, 2)
 
   recordedById String   @db.Uuid
   recordedAt   DateTime @default(now())
@@ -963,10 +970,10 @@ model FileObject {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  diagnosticReports DiagnosticReportFile[]
-  receipts          Receipt[]
+  diagnosticReports     DiagnosticReportFile[]
+  receipts              Receipt[]
   verificationDocuments VerificationDocument[]
-  uploadedBy       User?                    @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedBy            User?                  @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
 
   @@index([category, status])
   @@index([uploadedById])
@@ -991,8 +998,8 @@ model DiagnosticReport {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  encounter     Encounter     @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounter     Encounter      @relation(fields: [encounterId], references: [id], onDelete: Cascade)
   investigation Investigation? @relation(fields: [investigationId], references: [id], onDelete: SetNull)
 
   files DiagnosticReportFile[]
@@ -1108,4 +1115,75 @@ model PaymentRefund {
   payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
   @@index([paymentId, createdAt])
+}
+
+// ===== Sprint 14: AI Foundation =====
+
+enum AIRequestStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REJECTED
+}
+
+model AIRequest {
+  id            String          @id @default(uuid()) @db.Uuid
+  chamberId     String          @db.Uuid
+  patientId     String?         @db.Uuid
+  encounterId   String?         @db.Uuid
+  requestedById String          @db.Uuid
+  feature       String          @db.VarChar(100)
+  provider      String          @db.VarChar(100)
+  model         String          @db.VarChar(150)
+  status        AIRequestStatus @default(PENDING)
+
+  // Only a digest of the user prompt is retained; raw prompt/context can
+  // contain clinical data and must not be duplicated in audit metadata.
+  promptHash      String    @db.VarChar(128)
+  contextMetadata Json?
+  inputTokens     Int?
+  outputTokens    Int?
+  totalTokens     Int?
+  latencyMs       Int?
+  errorCode       String?   @db.VarChar(100)
+  reviewRequired  Boolean   @default(true)
+  disclaimer      String    @db.VarChar(500)
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  chamber     Chamber    @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+  patient     Patient?   @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  encounter   Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  requestedBy User       @relation("AIRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  draft       AIDraft?
+
+  @@index([chamberId, createdAt])
+  @@index([patientId, createdAt])
+  @@index([encounterId])
+  @@index([requestedById, createdAt])
+  @@index([status, createdAt])
+}
+
+model AIDraft {
+  id             String   @id @default(uuid()) @db.Uuid
+  requestId      String   @unique @db.Uuid
+  chamberId      String   @db.Uuid
+  patientId      String?  @db.Uuid
+  encounterId    String?  @db.Uuid
+  draftType      String   @db.VarChar(100)
+  content        Json
+  reviewRequired Boolean  @default(true)
+  disclaimer     String   @db.VarChar(500)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  request   AIRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  chamber   Chamber    @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+  patient   Patient?   @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  encounter Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+
+  @@index([chamberId, createdAt])
+  @@index([patientId, createdAt])
+  @@index([encounterId])
 }

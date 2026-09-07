@@ -39,6 +39,10 @@ export const configuration = (environment: Environment) => ({
   ai: {
     provider: environment.AI_PROVIDER,
     apiKey: environment.AI_API_KEY,
+    model: environment.AI_MODEL ?? 'gpt-4o-mini',
+    baseUrl: environment.AI_BASE_URL ?? 'https://api.openai.com/v1',
+    timeoutMs: environment.AI_TIMEOUT_MS,
+    maxRetries: environment.AI_MAX_RETRIES,
   },
   email: {
     provider: environment.EMAIL_PROVIDER,

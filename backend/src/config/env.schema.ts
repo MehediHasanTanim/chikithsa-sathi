@@ -9,6 +9,10 @@ const optionalUrl = z.preprocess(
   (value) => (value === '' ? undefined : value),
   z.string().url().optional(),
 );
+const optionalAIProvider = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.enum(['openai']).optional(),
+);
 
 export const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -41,8 +45,12 @@ export const environmentSchema = z.object({
   STORAGE_BUCKET: optionalString,
   STORAGE_ACCESS_KEY: optionalString,
   STORAGE_SECRET_KEY: optionalString,
-  AI_PROVIDER: optionalString,
+  AI_PROVIDER: optionalAIProvider,
   AI_API_KEY: optionalString,
+  AI_MODEL: optionalString,
+  AI_BASE_URL: optionalUrl,
+  AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).optional().default(15000),
+  AI_MAX_RETRIES: z.coerce.number().int().min(0).max(3).optional().default(1),
   EMAIL_PROVIDER: optionalString,
   EMAIL_FROM: z.preprocess(
     (value) => (value === '' ? undefined : value),

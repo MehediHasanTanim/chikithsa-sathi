@@ -27,6 +27,15 @@ describe('environment validation', () => {
     }).toThrow('Invalid environment configuration');
   });
 
+  it('accepts only configured AI provider adapters', () => {
+    expect(validateEnvironment({ ...requiredEnvironment, AI_PROVIDER: 'openai' }).AI_PROVIDER).toBe(
+      'openai',
+    );
+    expect(() =>
+      validateEnvironment({ ...requiredEnvironment, AI_PROVIDER: 'unsupported' }),
+    ).toThrow('Invalid environment configuration');
+  });
+
   it('disables Swagger by default in production and requires explicit opt-in', () => {
     const productionEnvironment = {
       ...requiredEnvironment,

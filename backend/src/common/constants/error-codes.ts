@@ -74,6 +74,10 @@ export const ErrorCode = {
   PaymentAlreadyRefunded: 'PAYMENT_ALREADY_REFUNDED',
   PaymentRefundExceedsBalance: 'PAYMENT_REFUND_EXCEEDS_BALANCE',
   PaymentPermissionDenied: 'PAYMENT_PERMISSION_DENIED',
+  AIUnavailable: 'AI_UNAVAILABLE',
+  AIInvalidResponse: 'AI_INVALID_RESPONSE',
+  AIUnsafeInput: 'AI_UNSAFE_INPUT',
+  AIUnsafeOutput: 'AI_UNSAFE_OUTPUT',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
