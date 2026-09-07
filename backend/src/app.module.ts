@@ -13,6 +13,7 @@ import { SchedulesModule } from '@modules/schedules/schedules.module';
 import { VerificationModule } from '@modules/verification/verification.module';
 import { PermissionsModule } from '@modules/permissions/permissions.module';
 import { StaffModule } from '@modules/staff/staff.module';
+import { PatientsModule } from '@modules/patients/patients.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { StaffModule } from '@modules/staff/staff.module';
     VerificationModule,
     PermissionsModule,
     StaffModule,
+    PatientsModule,
   ],
 })
 export class AppModule {}

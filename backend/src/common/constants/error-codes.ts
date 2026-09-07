@@ -37,6 +37,10 @@ export const ErrorCode = {
   StaffNotFound: 'STAFF_NOT_FOUND',
   StaffUserNotFound: 'STAFF_USER_NOT_FOUND',
   StaffSelfAction: 'STAFF_SELF_ACTION',
+  PatientNotFound: 'PATIENT_NOT_FOUND',
+  PatientDuplicate: 'PATIENT_DUPLICATE',
+  PatientForbidden: 'PATIENT_FORBIDDEN',
+  PatientCodeExists: 'PATIENT_CODE_EXISTS',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

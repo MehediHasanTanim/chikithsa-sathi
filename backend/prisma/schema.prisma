@@ -241,6 +241,7 @@ model Chamber {
   owner       DoctorProfile       @relation("ChamberOwner", fields: [ownerDoctorId], references: [id])
   memberships ChamberMembership[]
   schedules   Schedule[]
+  patients    PatientChamber[]
 
   @@index([ownerDoctorId])
   @@index([status])
@@ -338,4 +339,105 @@ model RolePermission {
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@unique([roleId, permissionId])
+}
+
+// ===== Sprint 5: Patient Management =====
+
+model Patient {
+  id            String  @id @default(uuid()) @db.Uuid
+  patientCode   String  @unique @db.VarChar(50)
+
+  firstName     String  @db.VarChar(100)
+  lastName      String? @db.VarChar(100)
+  fullName      String  @db.VarChar(200)
+  nameBangla    String? @db.VarChar(200)
+
+  phone          String? @db.VarChar(30)
+  alternatePhone String? @db.VarChar(30)
+  email          String? @db.VarChar(255)
+
+  dateOfBirth DateTime?
+  gender      String?  @db.VarChar(30)
+  bloodGroup  String?  @db.VarChar(10)
+  nationalId  String?  @db.VarChar(100)
+
+  addressLine1 String? @db.VarChar(255)
+  addressLine2 String? @db.VarChar(255)
+  area         String? @db.VarChar(150)
+  city         String? @db.VarChar(100)
+  district     String? @db.VarChar(100)
+  division     String? @db.VarChar(100)
+  postalCode   String? @db.VarChar(20)
+
+  emergencyName     String? @db.VarChar(200)
+  emergencyPhone    String? @db.VarChar(30)
+  emergencyRelation String? @db.VarChar(100)
+
+  profileImageFileId String? @db.Uuid
+  createdById        String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  chambers   PatientChamber[]
+  allergies  PatientAllergy[]
+  conditions PatientCondition[]
+
+  @@index([phone])
+  @@index([fullName])
+  @@index([nameBangla])
+  @@index([nationalId])
+}
+
+model PatientChamber {
+  id           String   @id @default(uuid()) @db.Uuid
+  patientId    String   @db.Uuid
+  chamberId    String   @db.Uuid
+  firstVisitAt DateTime?
+  lastVisitAt  DateTime?
+  visitCount   Int      @default(0)
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  chamber Chamber @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, chamberId])
+  @@index([chamberId, lastVisitAt])
+}
+
+model PatientAllergy {
+  id        String   @id @default(uuid()) @db.Uuid
+  patientId String   @db.Uuid
+
+  allergen  String   @db.VarChar(255)
+  reaction  String?  @db.VarChar(255)
+  severity  String?  @db.VarChar(50)
+  notes     String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+}
+
+model PatientCondition {
+  id          String   @id @default(uuid()) @db.Uuid
+  patientId   String   @db.Uuid
+
+  condition   String   @db.VarChar(255)
+  diagnosedAt DateTime?
+  status      String?  @db.VarChar(50)
+  notes       String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
 }
