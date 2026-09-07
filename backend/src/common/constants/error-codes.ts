@@ -49,6 +49,10 @@ export const ErrorCode = {
   QueueInvalidTransition: 'QUEUE_INVALID_STATE_TRANSITION',
   QueueDuplicateCheckIn: 'QUEUE_DUPLICATE_CHECK_IN',
   QueueInvalid: 'QUEUE_INVALID',
+  EncounterNotFound: 'ENCOUNTER_NOT_FOUND',
+  EncounterInvalidTransition: 'ENCOUNTER_INVALID_STATE_TRANSITION',
+  EncounterLocked: 'ENCOUNTER_LOCKED',
+  EncounterInvalid: 'ENCOUNTER_INVALID',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

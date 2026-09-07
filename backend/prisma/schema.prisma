@@ -176,6 +176,7 @@ model DoctorProfile {
   schedules          Schedule[]
   appointments       Appointment[]
   queueEntries       QueueEntry[]
+  encounters         Encounter[]
 
   @@index([specialization])
   @@index([bmdcNumber])
@@ -247,6 +248,7 @@ model Chamber {
   appointments  Appointment[]
   queueEntries  QueueEntry[]
   queueCounters DailyQueueCounter[]
+  encounters    Encounter[]
 
   @@index([ownerDoctorId])
   @@index([status])
@@ -390,6 +392,7 @@ model Patient {
   appointments Appointment[]
   conditions   PatientCondition[]
   queueEntries QueueEntry[]
+  encounters   Encounter[]
 
   @@index([phone])
   @@index([fullName])
@@ -502,6 +505,7 @@ model Appointment {
   doctor  DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
   queueEntry QueueEntry?
+  encounter  Encounter?
 
   @@index([chamberId, scheduledDate, status])
   @@index([doctorId, scheduledAt])
@@ -562,8 +566,52 @@ model QueueEntry {
   appointment Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
   doctor      DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
+  encounter Encounter?
+
   @@unique([chamberId, queueDate, queueNumber])
   @@index([chamberId, queueDate, status])
   @@index([doctorId, queueDate, status])
   @@index([patientId, queueDate])
+}
+
+// ===== Sprint 8: Consultation / Encounter =====
+
+enum EncounterStatus {
+  DRAFT
+  IN_PROGRESS
+  READY_FOR_REVIEW
+  COMPLETED
+  LOCKED
+}
+
+model Encounter {
+  id            String          @id @default(uuid()) @db.Uuid
+  chamberId     String          @db.Uuid
+  patientId     String          @db.Uuid
+  doctorId      String          @db.Uuid
+  appointmentId String?         @unique @db.Uuid
+  queueEntryId  String?         @unique @db.Uuid
+
+  encounterDate  DateTime        @db.Date
+  status         EncounterStatus @default(DRAFT)
+  chiefComplaint String?         @db.Text
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  lockedAt    DateTime?
+
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chamber     Chamber       @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+  patient     Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor      DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  appointment Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  queueEntry  QueueEntry?   @relation(fields: [queueEntryId], references: [id], onDelete: SetNull)
+
+  @@index([chamberId, encounterDate])
+  @@index([patientId, encounterDate])
+  @@index([doctorId, encounterDate])
 }
