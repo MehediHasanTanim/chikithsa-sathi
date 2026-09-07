@@ -1,11 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  GetObjectTaggingCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const SIGNED_URL_TTL_SECONDS = 900;
 
 export type SignedUrl = { url: string; expiresAt: Date };
+export type UploadObjectMetadata = {
+  sizeBytes: number;
+  contentType: string | undefined;
+  checksumSha256: string | undefined;
+  scanStatus: 'CLEAN' | 'PENDING' | 'INFECTED';
+};
 
 /**
  * Generates time-limited pre-signed URLs for private object storage. When
@@ -39,13 +51,19 @@ export class StorageService {
     }
   }
 
-  async createUploadUrl(key: string, contentType: string, sizeBytes: number): Promise<SignedUrl> {
+  async createUploadUrl(
+    key: string,
+    contentType: string,
+    sizeBytes: number,
+    checksumSha256: string,
+  ): Promise<SignedUrl> {
     if (!this.client) return this.devUrl(key);
     const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
       ContentType: contentType,
       ContentLength: sizeBytes,
+      ChecksumSHA256: checksumSha256,
     });
     const url = await getSignedUrl(this.client, command, { expiresIn: SIGNED_URL_TTL_SECONDS });
     return { url, expiresAt: this.expiry() };
@@ -58,11 +76,56 @@ export class StorageService {
     return { url, expiresAt: this.expiry() };
   }
 
+  /**
+   * Reads object metadata from storage rather than accepting completion details
+   * from the browser. A malware scanner must tag clean objects with
+   * `malware-scan-status=clean` before they can become available.
+   */
+  async inspectUpload(key: string): Promise<UploadObjectMetadata | null> {
+    if (!this.client) return null;
+
+    try {
+      const [head, tags] = await Promise.all([
+        this.client.send(
+          new HeadObjectCommand({ Bucket: this.bucket, Key: key, ChecksumMode: 'ENABLED' }),
+        ),
+        this.client.send(new GetObjectTaggingCommand({ Bucket: this.bucket, Key: key })),
+      ]);
+      const scanTag = tags.TagSet?.find((tag) => tag.Key === 'malware-scan-status')?.Value;
+      const normalizedScanStatus = scanTag?.toLowerCase();
+
+      return {
+        sizeBytes: head.ContentLength ?? -1,
+        contentType: head.ContentType,
+        checksumSha256: head.ChecksumSHA256,
+        scanStatus:
+          normalizedScanStatus === 'clean'
+            ? 'CLEAN'
+            : normalizedScanStatus === 'infected'
+              ? 'INFECTED'
+              : 'PENDING',
+      };
+    } catch (error) {
+      if (this.isObjectNotFound(error)) return null;
+      throw error;
+    }
+  }
+
   private devUrl(key: string): SignedUrl {
     return { url: `${this.appUrl}/dev-storage/${key}`, expiresAt: this.expiry() };
   }
 
   private expiry(): Date {
     return new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000);
+  }
+
+  private isObjectNotFound(error: unknown): boolean {
+    if (typeof error !== 'object' || error === null) return false;
+    const candidate = error as { name?: unknown; $metadata?: { httpStatusCode?: unknown } };
+    return (
+      candidate.name === 'NotFound' ||
+      candidate.name === 'NoSuchKey' ||
+      candidate.$metadata?.httpStatusCode === 404
+    );
   }
 }

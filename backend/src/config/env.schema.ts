@@ -18,7 +18,7 @@ export const environmentSchema = z.object({
   REDIS_URL: z.string().url().startsWith('redis://'),
   APP_NAME: z.string().min(1).default('Chamber Management API'),
   APP_URL: z.string().url().default('http://localhost:3000'),
-  ENABLE_SWAGGER: booleanFromEnvironment.optional().default('true'),
+  ENABLE_SWAGGER: booleanFromEnvironment.optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'log', 'debug', 'verbose']).default('log'),
   TIMEZONE: z.string().default('Asia/Dhaka'),
   JWT_ACCESS_SECRET: z.preprocess(
@@ -53,7 +53,9 @@ export const environmentSchema = z.object({
   NOTIFICATIONS_ENABLED: booleanFromEnvironment.optional().default('false'),
 });
 
-export type Environment = z.infer<typeof environmentSchema>;
+export type Environment = Omit<z.infer<typeof environmentSchema>, 'ENABLE_SWAGGER'> & {
+  ENABLE_SWAGGER: boolean;
+};
 
 export function validateEnvironment(config: Record<string, unknown>): Environment {
   const parsed = environmentSchema.safeParse(config);
@@ -73,5 +75,9 @@ export function validateEnvironment(config: Record<string, unknown>): Environmen
     throw new Error('Invalid environment configuration: production JWT secrets must be replaced');
   }
 
-  return parsed.data;
+  return {
+    ...parsed.data,
+    // Development keeps the docs convenient, while production must opt in.
+    ENABLE_SWAGGER: parsed.data.ENABLE_SWAGGER ?? parsed.data.NODE_ENV !== 'production',
+  };
 }

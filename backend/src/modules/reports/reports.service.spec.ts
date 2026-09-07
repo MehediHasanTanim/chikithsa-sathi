@@ -1,3 +1,5 @@
+import { ForbiddenException } from '@nestjs/common';
+
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { ReportsService } from './reports.service';
 
@@ -63,5 +65,25 @@ describe('ReportsService', () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({ id: 'report-1' });
+  });
+
+  it('rejects attaching a file uploaded by another user', async () => {
+    prisma.encounter.findUnique.mockResolvedValue({
+      id: 'encounter-1',
+      patientId: 'patient-1',
+      chamberId: 'chamber-1',
+    });
+    permissions.requirePermissions.mockResolvedValue(undefined);
+    prisma.fileObject.findUnique.mockResolvedValue({
+      id: 'file-1',
+      status: 'AVAILABLE',
+      uploadedById: 'user-2',
+    });
+
+    await expect(
+      service.create(user, 'encounter-1', { title: 'CBC Report', fileId: 'file-1' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(prisma.diagnosticReport.create).not.toHaveBeenCalled();
   });
 });

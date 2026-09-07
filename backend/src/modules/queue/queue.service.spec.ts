@@ -1,6 +1,7 @@
 import { ConflictException } from '@nestjs/common';
-import { QueueStatus } from '@prisma/client';
+import { Prisma, QueueStatus } from '@prisma/client';
 
+import { ErrorCode } from '@common/constants/error-codes';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { QueueService } from './queue.service';
 
@@ -35,6 +36,7 @@ describe('QueueService', () => {
       create: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
       findMany: jest.fn(),
     },
     $queryRaw: jest.fn(),
@@ -100,16 +102,85 @@ describe('QueueService', () => {
 
   it('transitions a waiting entry to called', async () => {
     permissions.requirePermissions.mockResolvedValue(undefined);
-    prisma.queueEntry.findUnique.mockResolvedValue(entryRecord);
-    prisma.queueEntry.update.mockResolvedValue({
+    prisma.queueEntry.findUnique.mockResolvedValueOnce(entryRecord).mockResolvedValueOnce({
       ...entryRecord,
       status: QueueStatus.CALLED,
       calledAt: new Date(),
     });
+    prisma.queueEntry.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await service.call(user, 'queue-1');
 
     expect(result.status).toBe(QueueStatus.CALLED);
+    const updateArgs = (
+      prisma.queueEntry.updateMany.mock.calls as Array<
+        [
+          {
+            where: { id: string; status: { in: QueueStatus[] } };
+            data: { status: QueueStatus; calledAt?: Date };
+          },
+        ]
+      >
+    )[0]![0];
+    expect(updateArgs.where).toEqual({
+      id: 'queue-1',
+      status: { in: [QueueStatus.WAITING] },
+    });
+    expect(updateArgs.data.status).toBe(QueueStatus.CALLED);
+    expect(updateArgs.data.calledAt).toBeInstanceOf(Date);
+  });
+
+  it('rejects a stale state transition without overwriting the queue entry', async () => {
+    permissions.requirePermissions.mockResolvedValue(undefined);
+    prisma.queueEntry.findUnique.mockResolvedValue(entryRecord);
+    prisma.queueEntry.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.call(user, 'queue-1')).rejects.toBeInstanceOf(ConflictException);
+
+    expect(events.called).not.toHaveBeenCalled();
+  });
+
+  it('rejects recalling an entry when it would duplicate an active patient queue entry', async () => {
+    permissions.requirePermissions.mockResolvedValue(undefined);
+    prisma.queueEntry.findUnique.mockResolvedValue({ ...entryRecord, status: QueueStatus.SKIPPED });
+    prisma.queueEntry.updateMany.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Duplicate active queue entry', {
+        code: 'P2002',
+        clientVersion: '6.19.3',
+        meta: { target: 'QueueEntry_activePatientPerDay_key' },
+      }),
+    );
+
+    try {
+      await service.recall(user, 'queue-1');
+      fail('Expected a duplicate check-in error');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: ErrorCode.QueueDuplicateCheckIn,
+      });
+    }
+  });
+
+  it('maps a concurrent active-queue unique-index conflict to QueueDuplicateCheckIn', async () => {
+    stubCheckIn();
+    prisma.queueEntry.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Duplicate active queue entry', {
+        code: 'P2002',
+        clientVersion: '6.19.3',
+        meta: { target: 'QueueEntry_activePatientPerDay_key' },
+      }),
+    );
+
+    try {
+      await service.checkIn(user, { chamberId: 'chamber-1', patientId: 'patient-1' });
+      fail('Expected a duplicate check-in error');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: ErrorCode.QueueDuplicateCheckIn,
+      });
+    }
   });
 
   it('rejects completing an entry that is not in consultation', async () => {

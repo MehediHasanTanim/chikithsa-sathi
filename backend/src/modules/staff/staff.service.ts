@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -10,6 +11,7 @@ import { ErrorCode } from '@common/constants/error-codes';
 import { PrismaService } from '@database/prisma/prisma.service';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PermissionsService } from '@modules/permissions/permissions.service';
+import { isStaffRole } from './staff.constants';
 import type { InviteStaffDto } from './dto/invite-staff.dto';
 import type { UpdateStaffDto } from './dto/update-staff.dto';
 
@@ -53,6 +55,12 @@ export class StaffService {
     chamberId: string,
     dto: InviteStaffDto,
   ): Promise<PublicStaffMembership> {
+    const actorMembership = await this.permissions.requirePermissions(user.id, chamberId, [
+      'staff.invite',
+    ]);
+    this.assertStaffRole(dto.role);
+    await this.assertRoleAssignable(actorMembership.role, dto.role);
+
     const target = await this.prisma.user.findUnique({
       where: { phone: dto.phone },
       select: userSelect,
@@ -109,8 +117,22 @@ export class StaffService {
     dto: UpdateStaffDto,
   ): Promise<PublicStaffMembership> {
     const membership = await this.findMembership(membershipId);
-    await this.permissions.requirePermissions(user.id, membership.chamberId, ['staff.manage']);
+    const actorMembership = await this.permissions.requirePermissions(
+      user.id,
+      membership.chamberId,
+      ['staff.manage'],
+    );
     this.assertNotSelf(membership, user.id);
+    this.assertMutableStaffMembership(membership);
+    if (dto.role !== undefined) {
+      this.assertStaffRole(dto.role);
+      await this.assertRoleAssignable(actorMembership.role, dto.role);
+    } else if (
+      dto.status === MembershipStatus.ACTIVE &&
+      membership.status !== MembershipStatus.ACTIVE
+    ) {
+      await this.assertRoleAssignable(actorMembership.role, membership.role);
+    }
 
     const updated = await this.prisma.chamberMembership.update({
       where: { id: membership.id },
@@ -131,6 +153,7 @@ export class StaffService {
     const membership = await this.findMembership(membershipId);
     await this.permissions.requirePermissions(user.id, membership.chamberId, ['staff.manage']);
     this.assertNotSelf(membership, user.id);
+    this.assertMutableStaffMembership(membership);
 
     const updated = await this.prisma.chamberMembership.update({
       where: { id: membership.id },
@@ -173,6 +196,42 @@ export class StaffService {
       throw new BadRequestException({
         code: ErrorCode.StaffSelfAction,
         message: 'You cannot change your own membership',
+        details: [],
+      });
+    }
+  }
+
+  /** Owner and platform-administrator memberships must never be staff-managed. */
+  private assertMutableStaffMembership(membership: ChamberMembership): void {
+    if (membership.role === UserRole.DOCTOR || membership.role === UserRole.PLATFORM_ADMIN) {
+      throw new BadRequestException({
+        code: ErrorCode.StaffSelfAction,
+        message: 'Owner and platform administrator memberships cannot be managed as staff',
+        details: [],
+      });
+    }
+  }
+
+  private assertStaffRole(role: UserRole): void {
+    if (!isStaffRole(role)) {
+      throw new BadRequestException({
+        code: ErrorCode.BadRequest,
+        message: 'Only staff roles can be assigned through this endpoint',
+        details: [],
+      });
+    }
+  }
+
+  /** A role can only be assigned if all of its permissions are held by the actor. */
+  private async assertRoleAssignable(actorRole: UserRole, proposedRole: UserRole): Promise<void> {
+    const [actorPermissions, proposedPermissions] = await Promise.all([
+      this.permissions.rolePermissions(actorRole),
+      this.permissions.rolePermissions(proposedRole),
+    ]);
+    if ([...proposedPermissions].some((permission) => !actorPermissions.has(permission))) {
+      throw new ForbiddenException({
+        code: ErrorCode.PermissionDenied,
+        message: 'You cannot assign a role with permissions you do not have',
         details: [],
       });
     }

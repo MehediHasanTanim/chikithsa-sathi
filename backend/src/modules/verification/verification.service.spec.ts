@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { VerificationStatus } from '@prisma/client';
 
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
@@ -26,6 +26,7 @@ describe('VerificationService', () => {
   };
   const prisma = {
     professionalVerification: { findUnique: jest.fn(), create: jest.fn() },
+    fileObject: { findMany: jest.fn() },
     transaction: jest.fn(),
   };
   const doctors = { getOrCreateProfile: jest.fn().mockResolvedValue(doctorProfile) };
@@ -34,6 +35,7 @@ describe('VerificationService', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     doctors.getOrCreateProfile.mockResolvedValue(doctorProfile);
+    prisma.fileObject.findMany.mockResolvedValue([{ id: '00000000-0000-4000-8000-000000000001' }]);
   });
 
   it('returns a default NOT_SUBMITTED status for a new doctor', async () => {
@@ -78,5 +80,18 @@ describe('VerificationService', () => {
         documents: [{ fileId: '00000000-0000-4000-8000-000000000001', type: 'BMDC_CERTIFICATE' }],
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('rejects a verification document not uploaded by the doctor', async () => {
+    prisma.professionalVerification.findUnique.mockResolvedValue(pendingVerification);
+    prisma.fileObject.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.submit(user, {
+        documents: [{ fileId: '00000000-0000-4000-8000-000000000001', type: 'BMDC_CERTIFICATE' }],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.transaction).not.toHaveBeenCalled();
   });
 });

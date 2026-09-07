@@ -7,6 +7,7 @@ import { ResponseInterceptor } from '@common/interceptors/response.interceptor';
 import { getOrCreateRequestId, REQUEST_ID_HEADER } from '@common/middleware/request-id.hook';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { RedisService } from '@infrastructure/cache/redis.service';
+import { StorageService } from '@infrastructure/storage/storage.service';
 import { HealthModule } from '@modules/health/health.module';
 
 describe('Health endpoints (e2e)', () => {
@@ -18,6 +19,8 @@ describe('Health endpoints (e2e)', () => {
       .useValue({ ping: jest.fn().mockResolvedValue(undefined) })
       .overrideProvider(RedisService)
       .useValue({ ping: jest.fn().mockResolvedValue(undefined) })
+      .overrideProvider(StorageService)
+      .useValue({})
       .compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());

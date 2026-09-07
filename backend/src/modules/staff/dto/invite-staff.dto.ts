@@ -3,13 +3,7 @@ import { IsIn, IsString, Matches } from 'class-validator';
 import { UserRole } from '@prisma/client';
 
 import { normalizeBangladeshPhone } from '@common/utils/bangladesh-phone.util';
-
-const INVITABLE_ROLES = [
-  UserRole.ASSISTANT_DOCTOR,
-  UserRole.RECEPTIONIST,
-  UserRole.CHAMBER_MANAGER,
-  UserRole.BILLING_STAFF,
-];
+import { STAFF_ROLES } from '../staff.constants';
 
 export class InviteStaffDto {
   @IsString()
@@ -17,6 +11,6 @@ export class InviteStaffDto {
   @Transform(({ value }: { value: string }) => normalizeBangladeshPhone(value))
   phone!: string;
 
-  @IsIn(INVITABLE_ROLES)
+  @IsIn(STAFF_ROLES)
   role!: UserRole;
 }

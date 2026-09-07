@@ -1,5 +1,16 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DiagnosticReport, DiagnosticReportFile, FileStatus, FileObject } from '@prisma/client';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  DiagnosticReport,
+  DiagnosticReportFile,
+  FileCategory,
+  FileObject,
+  FileStatus,
+} from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
 import { PrismaService } from '@database/prisma/prisma.service';
@@ -62,6 +73,16 @@ export class ReportsService {
       const file = await this.prisma.fileObject.findUnique({ where: { id: dto.fileId } });
       if (!file || file.status !== FileStatus.AVAILABLE) {
         throw this.invalid('File is not available');
+      }
+      if (file.uploadedById !== user.id) {
+        throw new ForbiddenException({
+          code: ErrorCode.FileForbidden,
+          message: 'You can only attach files that you uploaded',
+          details: [],
+        });
+      }
+      if (file.category !== FileCategory.DIAGNOSTIC_REPORT) {
+        throw this.invalid('Only diagnostic report files can be attached to a report');
       }
     }
 

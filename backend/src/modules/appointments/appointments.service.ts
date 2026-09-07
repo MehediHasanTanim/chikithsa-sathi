@@ -40,6 +40,10 @@ export type PublicAppointment = {
 };
 
 type ChamberContext = { id: string; ownerDoctorId: string; timezone: string };
+type AppointmentTransactionClient = Pick<
+  Prisma.TransactionClient,
+  'appointment' | 'schedule' | '$queryRaw'
+>;
 
 const APPOINTMENT_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -57,8 +61,6 @@ export class AppointmentsService {
     await this.assertPatientLinked(dto.patientId, dto.chamberId);
 
     const scheduledAt = this.toUtcMinute(dto.scheduledAt);
-    await this.validateSlot(chamber, scheduledAt);
-
     const appointment = await this.createWithRetry(user.id, chamber, dto, scheduledAt);
     return this.toPublic(appointment);
   }
@@ -135,15 +137,7 @@ export class AppointmentsService {
 
     const chamber = await this.findChamber(appointment.chamberId);
     const scheduledAt = this.toUtcMinute(dto.scheduledAt);
-    await this.validateSlot(chamber, scheduledAt, appointment.id);
-
-    const updated = await this.prisma.appointment.update({
-      where: { id: appointment.id },
-      data: {
-        scheduledAt,
-        scheduledDate: this.toScheduledDate(chamber, scheduledAt),
-      },
-    });
+    const updated = await this.rescheduleWithRetry(appointment.id, chamber, scheduledAt);
     return this.toPublic(updated);
   }
 
@@ -217,6 +211,7 @@ export class AppointmentsService {
   }
 
   private async validateSlot(
+    db: AppointmentTransactionClient,
     chamber: ChamberContext,
     scheduledAt: Date,
     excludeAppointmentId?: string,
@@ -224,7 +219,7 @@ export class AppointmentsService {
     const parts = this.chamberTimeParts(scheduledAt, chamber.timezone);
     const hhmm = `${this.pad(parts.hours)}:${this.pad(parts.minutes)}`;
 
-    const schedule = await this.prisma.schedule.findFirst({
+    const schedule = await db.schedule.findFirst({
       where: {
         chamberId: chamber.id,
         doctorId: chamber.ownerDoctorId,
@@ -250,12 +245,13 @@ export class AppointmentsService {
 
     const scheduledDate = this.toScheduledDate(chamber, scheduledAt);
     if (schedule.maxPatients) {
-      const booked = await this.prisma.appointment.count({
+      const booked = await db.appointment.count({
         where: {
           chamberId: chamber.id,
           doctorId: chamber.ownerDoctorId,
           scheduledDate,
           status: { not: AppointmentStatus.CANCELLED },
+          ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
         },
       });
       if (booked >= schedule.maxPatients) {
@@ -263,12 +259,11 @@ export class AppointmentsService {
       }
     }
 
-    const conflict = await this.prisma.appointment.findFirst({
+    const conflict = await db.appointment.findFirst({
       where: {
         chamberId: chamber.id,
         doctorId: chamber.ownerDoctorId,
         scheduledAt,
-        status: { not: AppointmentStatus.CANCELLED },
         ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
       },
       select: { id: true },
@@ -291,30 +286,115 @@ export class AppointmentsService {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         const appointmentCode = this.generateAppointmentCode();
-        return await this.prisma.appointment.create({
-          data: {
-            appointmentCode,
-            chamberId: chamber.id,
-            patientId: dto.patientId,
-            doctorId: chamber.ownerDoctorId,
-            scheduledAt,
-            scheduledDate: this.toScheduledDate(chamber, scheduledAt),
-            type: dto.type,
-            reason: dto.reason,
-            notes: dto.notes,
-            bookedByUserId: userId,
+        return await this.prisma.transaction(
+          async (tx) => {
+            await this.validateSlot(tx, chamber, scheduledAt);
+            return tx.appointment.create({
+              data: {
+                appointmentCode,
+                chamberId: chamber.id,
+                patientId: dto.patientId,
+                doctorId: chamber.ownerDoctorId,
+                scheduledAt,
+                scheduledDate: this.toScheduledDate(chamber, scheduledAt),
+                type: dto.type,
+                reason: dto.reason,
+                notes: dto.notes,
+                bookedByUserId: userId,
+              },
+            });
           },
-        });
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
       } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        if (this.isAppointmentSlotConflict(error)) {
+          throw this.slotConflict();
+        }
+        if (this.isRetryableTransactionError(error) && attempt < 4) {
           continue;
         }
+        if (this.isRetryableTransactionError(error)) throw this.slotConflict();
         throw error;
       }
     }
     throw new ConflictException({
       code: ErrorCode.AppointmentCodeExists,
       message: 'Could not allocate a unique appointment code',
+      details: [],
+    });
+  }
+
+  private async rescheduleWithRetry(
+    appointmentId: string,
+    chamber: ChamberContext,
+    scheduledAt: Date,
+  ): Promise<Appointment> {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        return await this.prisma.transaction(
+          async (tx) => {
+            await tx.$queryRaw`
+              SELECT 1 FROM "Appointment" WHERE "id" = ${appointmentId}::uuid FOR UPDATE
+            `;
+            const appointment = await tx.appointment.findUnique({ where: { id: appointmentId } });
+            if (!appointment) {
+              throw this.notFound(ErrorCode.AppointmentNotFound, 'Appointment was not found');
+            }
+            if (
+              appointment.status === AppointmentStatus.CANCELLED ||
+              appointment.status === AppointmentStatus.COMPLETED
+            ) {
+              throw this.invalid('This appointment can no longer be rescheduled');
+            }
+
+            await this.validateSlot(tx, chamber, scheduledAt, appointment.id);
+            return tx.appointment.update({
+              where: { id: appointment.id },
+              data: {
+                scheduledAt,
+                scheduledDate: this.toScheduledDate(chamber, scheduledAt),
+              },
+            });
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        if (this.isAppointmentSlotConflict(error)) {
+          throw this.slotConflict();
+        }
+        if (this.isRetryableTransactionError(error) && attempt < 4) {
+          continue;
+        }
+        if (this.isRetryableTransactionError(error)) throw this.slotConflict();
+        throw error;
+      }
+    }
+
+    throw new Error('Unreachable appointment transaction state');
+  }
+
+  private isAppointmentSlotConflict(error: unknown): boolean {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+      return false;
+    }
+
+    const target = error.meta?.target;
+    if (Array.isArray(target)) {
+      return target.includes('doctorId') && target.includes('scheduledAt');
+    }
+    return (
+      typeof target === 'string' && target.includes('doctorId') && target.includes('scheduledAt')
+    );
+  }
+
+  private isRetryableTransactionError(error: unknown): boolean {
+    return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+  }
+
+  private slotConflict(): ConflictException {
+    return new ConflictException({
+      code: ErrorCode.AppointmentConflict,
+      message: 'This time slot is already booked',
       details: [],
     });
   }

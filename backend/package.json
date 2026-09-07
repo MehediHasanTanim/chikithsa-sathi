@@ -78,6 +78,14 @@
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.20.0"
   },
+  "overrides": {
+    "@nestjs/platform-fastify": {
+      "fastify": "5.12.1"
+    },
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.2"
+    }
+  },
   "lint-staged": {
     "*.ts": [
       "prettier --write",

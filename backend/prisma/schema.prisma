@@ -51,6 +51,7 @@ model User {
 
   doctorProfile DoctorProfile?
   memberships   ChamberMembership[]
+  uploadedFiles FileObject[]        @relation("FileUploader")
 
   @@index([status])
 }
@@ -211,6 +212,7 @@ model VerificationDocument {
   createdAt      DateTime @default(now())
 
   verification ProfessionalVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+  file         FileObject               @relation(fields: [fileId], references: [id], onDelete: Restrict)
 
   @@index([verificationId])
 }
@@ -517,7 +519,7 @@ model Appointment {
   payments   Payment[]
 
   @@index([chamberId, scheduledDate, status])
-  @@index([doctorId, scheduledAt])
+  @@unique([doctorId, scheduledAt])
   @@index([patientId, scheduledAt])
 }
 
@@ -577,6 +579,8 @@ model QueueEntry {
 
   encounter Encounter?
 
+  /// Active patient/day uniqueness is enforced by the partial unique index in
+  /// 20260907153000_queue_entry_integrity, which Prisma cannot model directly.
   @@unique([chamberId, queueDate, queueNumber])
   @@index([chamberId, queueDate, status])
   @@index([doctorId, queueDate, status])
@@ -961,6 +965,8 @@ model FileObject {
 
   diagnosticReports DiagnosticReportFile[]
   receipts          Receipt[]
+  verificationDocuments VerificationDocument[]
+  uploadedBy       User?                    @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
 
   @@index([category, status])
   @@index([uploadedById])
@@ -1006,6 +1012,7 @@ model DiagnosticReportFile {
   file   FileObject       @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@unique([reportId, fileId])
+  @@index([fileId])
 }
 
 // ===== Sprint 13: Payments & Receipts =====
@@ -1084,6 +1091,7 @@ model Receipt {
   file    FileObject? @relation(fields: [fileId], references: [id], onDelete: SetNull)
 
   @@index([paymentId])
+  @@index([fileId])
 }
 
 model PaymentRefund {

@@ -76,6 +76,9 @@ export class PaymentsService {
     if (dto.encounterId) {
       await this.assertEncounterBelongs(dto.encounterId, dto.chamberId, dto.patientId);
     }
+    if (dto.appointmentId) {
+      await this.assertAppointmentBelongs(dto.appointmentId, dto.chamberId, dto.patientId);
+    }
 
     const payment = await this.createWithRetry(user.id, dto, idempotencyKey);
     this.events.created(payment.id);
@@ -187,49 +190,92 @@ export class PaymentsService {
     await this.permissions.requirePermissions(user.id, payment.chamberId, ['payments.refund']);
     this.assertValidAmount(dto.amount);
 
-    if (payment.status === PaymentStatus.REFUNDED) {
-      throw new ConflictException({
-        code: ErrorCode.PaymentAlreadyRefunded,
-        message: 'Payment is already fully refunded',
-        details: [],
-      });
-    }
-
-    const refundedAmount = this.totalRefunded(payment);
-    const refundable = payment.amount.minus(refundedAmount);
     const requested = new Prisma.Decimal(dto.amount);
-    if (requested.greaterThan(refundable)) {
-      throw new BadRequestException({
-        code: ErrorCode.PaymentRefundExceedsBalance,
-        message: 'Refund amount exceeds the refundable balance',
-        details: [],
-      });
-    }
-
-    const remaining = refundable.minus(requested);
-    const status = remaining.equals(0) ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED;
-
-    const result = await this.prisma.transaction(async (tx) => {
-      await tx.paymentRefund.create({
-        data: {
-          paymentId: payment.id,
-          amount: requested,
-          reason: dto.reason,
-          status: RefundStatus.PROCESSED,
-          requestedById: user.id,
-          approvedById: user.id,
-          processedAt: new Date(),
-        },
-      });
-      return tx.payment.update({
-        where: { id: payment.id },
-        data: { status },
-        include: this.paymentInclude(),
-      });
-    });
+    const result = await this.refundWithLock(payment.id, user.id, requested, dto.reason);
 
     this.events.refunded(paymentId);
     return this.toPublic(result);
+  }
+
+  private async refundWithLock(
+    paymentId: string,
+    userId: string,
+    requested: Prisma.Decimal,
+    reason: string,
+  ): Promise<PaymentRecord> {
+    // PostgreSQL can abort one of two simultaneous serializable transactions. Retry the
+    // aborted one so it recalculates against the refund that acquired the row lock first.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.prisma.transaction(
+          async (tx) => {
+            await tx.$queryRaw`
+              SELECT 1 FROM "Payment" WHERE "id" = ${paymentId}::uuid FOR UPDATE
+            `;
+
+            const payment = await tx.payment.findUnique({
+              where: { id: paymentId },
+              include: this.paymentInclude(),
+            });
+            if (!payment) {
+              throw this.notFound();
+            }
+            if (payment.status === PaymentStatus.REFUNDED) {
+              throw new ConflictException({
+                code: ErrorCode.PaymentAlreadyRefunded,
+                message: 'Payment is already fully refunded',
+                details: [],
+              });
+            }
+
+            const refundedAmount = this.totalRefunded(payment);
+            const refundable = payment.amount.minus(refundedAmount);
+            if (requested.greaterThan(refundable)) {
+              throw new BadRequestException({
+                code: ErrorCode.PaymentRefundExceedsBalance,
+                message: 'Refund amount exceeds the refundable balance',
+                details: [],
+              });
+            }
+
+            const remaining = refundable.minus(requested);
+            const status = remaining.equals(0)
+              ? PaymentStatus.REFUNDED
+              : PaymentStatus.PARTIALLY_REFUNDED;
+
+            await tx.paymentRefund.create({
+              data: {
+                paymentId,
+                amount: requested,
+                reason,
+                status: RefundStatus.PROCESSED,
+                requestedById: userId,
+                approvedById: userId,
+                processedAt: new Date(),
+              },
+            });
+            return tx.payment.update({
+              where: { id: paymentId },
+              data: { status },
+              include: this.paymentInclude(),
+            });
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2034' &&
+          attempt < 2
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    // The loop always returns or throws; this satisfies TypeScript's control-flow analysis.
+    throw new Error('Unreachable refund transaction state');
   }
 
   private async createWithRetry(
@@ -312,6 +358,28 @@ export class PaymentsService {
       throw new NotFoundException({
         code: ErrorCode.EncounterNotFound,
         message: 'Encounter was not found',
+        details: [],
+      });
+    }
+  }
+
+  private async assertAppointmentBelongs(
+    appointmentId: string,
+    chamberId: string,
+    patientId: string,
+  ): Promise<void> {
+    const appointment = await this.prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      select: { chamberId: true, patientId: true },
+    });
+    if (
+      !appointment ||
+      appointment.chamberId !== chamberId ||
+      appointment.patientId !== patientId
+    ) {
+      throw new NotFoundException({
+        code: ErrorCode.AppointmentNotFound,
+        message: 'Appointment was not found',
         details: [],
       });
     }

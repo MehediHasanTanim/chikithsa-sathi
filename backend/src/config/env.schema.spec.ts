@@ -26,4 +26,21 @@ describe('environment validation', () => {
       validateEnvironment(invalidEnvironment);
     }).toThrow('Invalid environment configuration');
   });
+
+  it('disables Swagger by default in production and requires explicit opt-in', () => {
+    const productionEnvironment = {
+      ...requiredEnvironment,
+      NODE_ENV: 'production',
+      JWT_ACCESS_SECRET: 'production-access-secret-that-is-long-enough',
+      JWT_REFRESH_SECRET: 'production-refresh-secret-that-is-long-enough',
+    };
+    const production = validateEnvironment(productionEnvironment);
+    const optedIn = validateEnvironment({
+      ...productionEnvironment,
+      ENABLE_SWAGGER: 'true',
+    });
+
+    expect(production.ENABLE_SWAGGER).toBe(false);
+    expect(optedIn.ENABLE_SWAGGER).toBe(true);
+  });
 });

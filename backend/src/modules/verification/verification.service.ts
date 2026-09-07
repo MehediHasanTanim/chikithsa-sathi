@@ -1,5 +1,10 @@
-import { ConflictException, Injectable } from '@nestjs/common';
-import { ProfessionalVerification, VerificationStatus } from '@prisma/client';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import {
+  FileCategory,
+  FileStatus,
+  ProfessionalVerification,
+  VerificationStatus,
+} from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
 import { PrismaService } from '@database/prisma/prisma.service';
@@ -49,6 +54,11 @@ export class VerificationService {
       });
     }
 
+    await this.assertOwnedVerificationFiles(
+      user.id,
+      dto.documents.map((document) => document.fileId),
+    );
+
     await this.prisma.transaction(async (tx) => {
       if (dto.bmdcNumber) {
         await tx.doctorProfile.update({
@@ -86,6 +96,26 @@ export class VerificationService {
     });
     if (existing) return existing;
     return this.prisma.professionalVerification.create({ data: { doctorId } });
+  }
+
+  private async assertOwnedVerificationFiles(userId: string, fileIds: string[]): Promise<void> {
+    const uniqueFileIds = [...new Set(fileIds)];
+    const files = await this.prisma.fileObject.findMany({
+      where: {
+        id: { in: uniqueFileIds },
+        uploadedById: userId,
+        category: FileCategory.VERIFICATION_DOCUMENT,
+        status: FileStatus.AVAILABLE,
+      },
+      select: { id: true },
+    });
+    if (files.length !== uniqueFileIds.length) {
+      throw new BadRequestException({
+        code: ErrorCode.FileForbidden,
+        message: 'Verification documents must be available files uploaded by you',
+        details: [],
+      });
+    }
   }
 
   private toPublic(verification: ProfessionalVerification): PublicVerification {

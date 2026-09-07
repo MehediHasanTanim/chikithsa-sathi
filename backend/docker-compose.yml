@@ -13,7 +13,7 @@ x-api-environment: &api-environment
   REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379}
   APP_NAME: ${APP_NAME:-Chamber Management API}
   APP_URL: ${APP_URL:-http://localhost:3000}
-  ENABLE_SWAGGER: ${ENABLE_SWAGGER:-true}
+  ENABLE_SWAGGER: ${ENABLE_SWAGGER:-false}
   LOG_LEVEL: ${LOG_LEVEL:-log}
   TIMEZONE: ${TIMEZONE:-Asia/Dhaka}
   JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-development-only-access-secret-replace-before-production}

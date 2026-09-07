@@ -87,24 +87,28 @@ export class QueueService {
       select: { id: true },
     });
     if (existing) {
-      throw new ConflictException({
-        code: ErrorCode.QueueDuplicateCheckIn,
-        message: 'Patient is already in the queue for today',
-        details: [],
-      });
+      throw this.duplicateCheckIn();
     }
 
     const queueNumber = await this.nextQueueNumber(dto.chamberId, queueDate);
-    const entry = await this.prisma.queueEntry.create({
-      data: {
-        chamberId: dto.chamberId,
-        patientId: dto.patientId,
-        doctorId: chamber.ownerDoctorId,
-        appointmentId: dto.appointmentId,
-        queueDate,
-        queueNumber,
-      },
-    });
+    let entry: QueueEntry;
+    try {
+      entry = await this.prisma.queueEntry.create({
+        data: {
+          chamberId: dto.chamberId,
+          patientId: dto.patientId,
+          doctorId: chamber.ownerDoctorId,
+          appointmentId: dto.appointmentId,
+          queueDate,
+          queueNumber,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw this.duplicateCheckIn();
+      }
+      throw error;
+    }
 
     if (dto.appointmentId) {
       await this.prisma.appointment.update({
@@ -143,7 +147,7 @@ export class QueueService {
   async call(user: AuthenticatedUser, queueEntryId: string): Promise<PublicQueueEntry> {
     const entry = await this.loadAndAssert(user, queueEntryId);
     if (entry.status !== QueueStatus.WAITING) throw this.invalidTransition();
-    const updated = await this.updateEntry(entry.id, {
+    const updated = await this.updateEntry(entry.id, [QueueStatus.WAITING], {
       status: QueueStatus.CALLED,
       calledAt: new Date(),
     });
@@ -155,9 +159,12 @@ export class QueueService {
     const entry = await this.loadAndAssert(user, queueEntryId);
     let updated: QueueEntry;
     if (entry.status === QueueStatus.SKIPPED) {
-      updated = await this.updateEntry(entry.id, { status: QueueStatus.WAITING, skipReason: null });
+      updated = await this.updateEntry(entry.id, [QueueStatus.SKIPPED], {
+        status: QueueStatus.WAITING,
+        skipReason: null,
+      });
     } else if (entry.status === QueueStatus.CALLED) {
-      updated = await this.updateEntry(entry.id, { calledAt: new Date() });
+      updated = await this.updateEntry(entry.id, [QueueStatus.CALLED], { calledAt: new Date() });
     } else {
       throw this.invalidTransition();
     }
@@ -173,7 +180,7 @@ export class QueueService {
     if (entry.status !== QueueStatus.WAITING && entry.status !== QueueStatus.CALLED) {
       throw this.invalidTransition();
     }
-    const updated = await this.updateEntry(entry.id, {
+    const updated = await this.updateEntry(entry.id, [QueueStatus.WAITING, QueueStatus.CALLED], {
       status: QueueStatus.SKIPPED,
       skipReason: reason,
     });
@@ -183,7 +190,7 @@ export class QueueService {
   async start(user: AuthenticatedUser, queueEntryId: string): Promise<PublicQueueEntry> {
     const entry = await this.loadAndAssert(user, queueEntryId);
     if (entry.status !== QueueStatus.CALLED) throw this.invalidTransition();
-    const updated = await this.updateEntry(entry.id, {
+    const updated = await this.updateEntry(entry.id, [QueueStatus.CALLED], {
       status: QueueStatus.IN_CONSULTATION,
       consultationStartedAt: new Date(),
     });
@@ -194,7 +201,7 @@ export class QueueService {
   async complete(user: AuthenticatedUser, queueEntryId: string): Promise<PublicQueueEntry> {
     const entry = await this.loadAndAssert(user, queueEntryId);
     if (entry.status !== QueueStatus.IN_CONSULTATION) throw this.invalidTransition();
-    const updated = await this.updateEntry(entry.id, {
+    const updated = await this.updateEntry(entry.id, [QueueStatus.IN_CONSULTATION], {
       status: QueueStatus.COMPLETED,
       completedAt: new Date(),
     });
@@ -211,9 +218,26 @@ export class QueueService {
 
   private async updateEntry(
     queueEntryId: string,
-    data: Prisma.QueueEntryUpdateInput,
+    expectedStatuses: QueueStatus[],
+    data: Prisma.QueueEntryUpdateManyMutationInput,
   ): Promise<QueueEntry> {
-    return this.prisma.queueEntry.update({ where: { id: queueEntryId }, data });
+    let result: { count: number };
+    try {
+      result = await this.prisma.queueEntry.updateMany({
+        where: { id: queueEntryId, status: { in: expectedStatuses } },
+        data,
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw this.duplicateCheckIn();
+      }
+      throw error;
+    }
+    if (result.count !== 1) throw this.invalidTransition();
+
+    const entry = await this.prisma.queueEntry.findUnique({ where: { id: queueEntryId } });
+    if (!entry) throw this.notFound();
+    return entry;
   }
 
   private async findChamber(chamberId: string): Promise<{
@@ -297,6 +321,14 @@ export class QueueService {
     return new ConflictException({
       code: ErrorCode.QueueInvalidTransition,
       message: 'Invalid queue state transition',
+      details: [],
+    });
+  }
+
+  private duplicateCheckIn(): ConflictException {
+    return new ConflictException({
+      code: ErrorCode.QueueDuplicateCheckIn,
+      message: 'Patient is already in the queue for today',
       details: [],
     });
   }

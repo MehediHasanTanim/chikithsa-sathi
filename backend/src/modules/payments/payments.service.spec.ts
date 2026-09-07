@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PaymentStatus, Prisma } from '@prisma/client';
 
+import { ErrorCode } from '@common/constants/error-codes';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PaymentsService } from './payments.service';
 
@@ -36,12 +37,14 @@ const paymentRecord = {
 describe('PaymentsService', () => {
   const tx = {
     paymentRefund: { create: jest.fn() },
-    payment: { update: jest.fn() },
+    payment: { findUnique: jest.fn(), update: jest.fn() },
+    $queryRaw: jest.fn(),
   };
   const prisma = {
     payment: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), count: jest.fn() },
     patientChamber: { findUnique: jest.fn() },
     encounter: { findUnique: jest.fn() },
+    appointment: { findUnique: jest.fn() },
     receipt: { findFirst: jest.fn() },
     transaction: jest.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
   };
@@ -54,6 +57,8 @@ describe('PaymentsService', () => {
     prisma.transaction.mockImplementation(
       async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     );
+    tx.payment.findUnique.mockResolvedValue(paymentRecord);
+    tx.$queryRaw.mockResolvedValue([{ '?column?': 1 }]);
   });
 
   it('records a payment and issues a receipt', async () => {
@@ -133,6 +138,57 @@ describe('PaymentsService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  it('rejects an appointment that belongs to another chamber or patient', async () => {
+    permissions.requirePermissions.mockResolvedValue(undefined);
+    prisma.patientChamber.findUnique.mockResolvedValue({ patientId: 'patient-1' });
+    prisma.appointment.findUnique.mockResolvedValue({
+      chamberId: 'chamber-2',
+      patientId: 'patient-2',
+    });
+
+    try {
+      await service.create(user, {
+        chamberId: 'chamber-1',
+        patientId: 'patient-1',
+        appointmentId: 'appointment-2',
+        amount: 1000,
+        method: 'CASH',
+      });
+      fail('Expected an appointment-not-found error');
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect((error as NotFoundException).getResponse()).toMatchObject({
+        code: ErrorCode.AppointmentNotFound,
+      });
+    }
+
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts an appointment linked to the payment chamber and patient', async () => {
+    permissions.requirePermissions.mockResolvedValue(undefined);
+    prisma.patientChamber.findUnique.mockResolvedValue({ patientId: 'patient-1' });
+    prisma.appointment.findUnique.mockResolvedValue({
+      chamberId: 'chamber-1',
+      patientId: 'patient-1',
+    });
+    prisma.payment.create.mockResolvedValue({ ...paymentRecord, appointmentId: 'appointment-1' });
+
+    await service.create(user, {
+      chamberId: 'chamber-1',
+      patientId: 'patient-1',
+      appointmentId: 'appointment-1',
+      amount: 1000,
+      method: 'CASH',
+    });
+
+    expect(prisma.appointment.findUnique).toHaveBeenCalledWith({
+      where: { id: 'appointment-1' },
+      select: { chamberId: true, patientId: true },
+    });
+    expect(prisma.payment.create).toHaveBeenCalledTimes(1);
+  });
+
   it('requires payments.create permission before recording a payment', async () => {
     permissions.requirePermissions.mockRejectedValue(new ForbiddenException());
 
@@ -200,6 +256,10 @@ describe('PaymentsService', () => {
 
     expect(result.status).toBe(PaymentStatus.PARTIALLY_REFUNDED);
     expect(tx.paymentRefund.create).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
     expect(events.refunded).toHaveBeenCalledWith('payment-1');
   });
 
@@ -223,6 +283,10 @@ describe('PaymentsService', () => {
       ...paymentRecord,
       refunds: [{ amount: new Prisma.Decimal(600) }],
     });
+    tx.payment.findUnique.mockResolvedValue({
+      ...paymentRecord,
+      refunds: [{ amount: new Prisma.Decimal(600) }],
+    });
 
     await expect(
       service.refund(user, 'payment-1', { amount: 500, reason: 'Too much' }),
@@ -236,10 +300,36 @@ describe('PaymentsService', () => {
       status: PaymentStatus.REFUNDED,
       refunds: [{ amount: new Prisma.Decimal(1000) }],
     });
+    tx.payment.findUnique.mockResolvedValue({
+      ...paymentRecord,
+      status: PaymentStatus.REFUNDED,
+      refunds: [{ amount: new Prisma.Decimal(1000) }],
+    });
 
     await expect(
       service.refund(user, 'payment-1', { amount: 100, reason: 'Again' }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('uses the locked payment balance rather than the earlier authorization read', async () => {
+    permissions.requirePermissions.mockResolvedValue(undefined);
+    prisma.payment.findUnique.mockResolvedValue(paymentRecord);
+    tx.payment.findUnique.mockResolvedValue({
+      ...paymentRecord,
+      refunds: [{ amount: new Prisma.Decimal(600) }],
+    });
+
+    try {
+      await service.refund(user, 'payment-1', { amount: 500, reason: 'Concurrent refund' });
+      fail('Expected a refund-balance error');
+    } catch (error) {
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getResponse()).toMatchObject({
+        code: ErrorCode.PaymentRefundExceedsBalance,
+      });
+    }
+
+    expect(tx.paymentRefund.create).not.toHaveBeenCalled();
   });
 
   it('requires payments.refund permission before refunding', async () => {

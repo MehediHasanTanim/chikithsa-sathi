@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { AppointmentStatus } from '@prisma/client';
+import { AppointmentStatus, Prisma } from '@prisma/client';
 
+import { ErrorCode } from '@common/constants/error-codes';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { AppointmentsService } from './appointments.service';
 
@@ -50,6 +51,17 @@ const appointmentRecord = {
 };
 
 describe('AppointmentsService', () => {
+  const tx = {
+    schedule: { findFirst: jest.fn() },
+    appointment: {
+      count: jest.fn(),
+      findFirst: jest.fn(),
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
+    $queryRaw: jest.fn(),
+  };
   const prisma = {
     chamber: { findUnique: jest.fn() },
     patientChamber: { findUnique: jest.fn() },
@@ -62,24 +74,31 @@ describe('AppointmentsService', () => {
       update: jest.fn(),
       findMany: jest.fn(),
     },
+    transaction: jest.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
   };
   const permissions = { requirePermissions: jest.fn() };
   const service = new AppointmentsService(prisma as never, permissions as never);
 
-  beforeEach(() => jest.resetAllMocks());
+  beforeEach(() => {
+    jest.resetAllMocks();
+    prisma.transaction.mockImplementation(
+      async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+    );
+    tx.$queryRaw.mockResolvedValue([{ '?column?': 1 }]);
+  });
 
   const stubValidSlot = () => {
     prisma.chamber.findUnique.mockResolvedValue(chamber);
     prisma.patientChamber.findUnique.mockResolvedValue({ id: 'link-1' });
-    prisma.schedule.findFirst.mockResolvedValue(schedule);
-    prisma.appointment.count.mockResolvedValue(0);
-    prisma.appointment.findFirst.mockResolvedValue(null);
+    tx.schedule.findFirst.mockResolvedValue(schedule);
+    tx.appointment.count.mockResolvedValue(0);
+    tx.appointment.findFirst.mockResolvedValue(null);
   };
 
   it('books a valid appointment', async () => {
     permissions.requirePermissions.mockResolvedValue(undefined);
     stubValidSlot();
-    prisma.appointment.create.mockResolvedValue(appointmentRecord);
+    tx.appointment.create.mockResolvedValue(appointmentRecord);
 
     const result = await service.create(user, {
       chamberId: 'chamber-1',
@@ -87,7 +106,10 @@ describe('AppointmentsService', () => {
       scheduledAt: scheduledAt.toISOString(),
     });
 
-    expect(prisma.appointment.create).toHaveBeenCalledTimes(1);
+    expect(tx.appointment.create).toHaveBeenCalledTimes(1);
+    expect(prisma.transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
     expect(result).toMatchObject({ id: 'appointment-1', status: 'BOOKED' });
   });
 
@@ -95,7 +117,7 @@ describe('AppointmentsService', () => {
     permissions.requirePermissions.mockResolvedValue(undefined);
     prisma.chamber.findUnique.mockResolvedValue(chamber);
     prisma.patientChamber.findUnique.mockResolvedValue({ id: 'link-1' });
-    prisma.schedule.findFirst.mockResolvedValue(schedule);
+    tx.schedule.findFirst.mockResolvedValue(schedule);
 
     await expect(
       service.create(user, {
@@ -110,7 +132,7 @@ describe('AppointmentsService', () => {
     permissions.requirePermissions.mockResolvedValue(undefined);
     prisma.chamber.findUnique.mockResolvedValue(chamber);
     prisma.patientChamber.findUnique.mockResolvedValue({ id: 'link-1' });
-    prisma.schedule.findFirst.mockResolvedValue(null);
+    tx.schedule.findFirst.mockResolvedValue(null);
 
     await expect(
       service.create(user, {
@@ -124,7 +146,7 @@ describe('AppointmentsService', () => {
   it('rejects a duplicate slot booking', async () => {
     permissions.requirePermissions.mockResolvedValue(undefined);
     stubValidSlot();
-    prisma.appointment.findFirst.mockResolvedValue({ id: 'existing-1' });
+    tx.appointment.findFirst.mockResolvedValue({ id: 'existing-1' });
 
     await expect(
       service.create(user, {
@@ -133,6 +155,32 @@ describe('AppointmentsService', () => {
         scheduledAt: scheduledAt.toISOString(),
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('maps a concurrent doctor/time unique-index conflict to AppointmentConflict', async () => {
+    permissions.requirePermissions.mockResolvedValue(undefined);
+    stubValidSlot();
+    tx.appointment.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Duplicate appointment slot', {
+        code: 'P2002',
+        clientVersion: '6.19.3',
+        meta: { target: ['doctorId', 'scheduledAt'] },
+      }),
+    );
+
+    try {
+      await service.create(user, {
+        chamberId: 'chamber-1',
+        patientId: 'patient-1',
+        scheduledAt: scheduledAt.toISOString(),
+      });
+      fail('Expected an appointment-slot conflict');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: ErrorCode.AppointmentConflict,
+      });
+    }
   });
 
   it('cancels a booked appointment', async () => {
