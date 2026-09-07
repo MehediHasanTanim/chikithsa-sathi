@@ -67,6 +67,8 @@ export const ErrorCode = {
   PrescriptionNotFound: 'PRESCRIPTION_NOT_FOUND',
   PrescriptionInvalid: 'PRESCRIPTION_INVALID',
   PrescriptionCodeExists: 'PRESCRIPTION_CODE_EXISTS',
+  PrescriptionAlreadyFinalized: 'PRESCRIPTION_ALREADY_FINALIZED',
+  PrescriptionReviewRequired: 'PRESCRIPTION_REVIEW_REQUIRED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

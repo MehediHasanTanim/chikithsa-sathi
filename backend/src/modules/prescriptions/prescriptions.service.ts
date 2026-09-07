@@ -19,7 +19,11 @@ import { PrismaService } from '@database/prisma/prisma.service';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 import type { CreatePrescriptionDto, PrescriptionItemDto } from './dto/create-prescription.dto';
+import type { AmendPrescriptionDto } from './dto/amend-prescription.dto';
+import type { FinalizePrescriptionDto } from './dto/finalize-prescription.dto';
+import type { ReviewPrescriptionDto } from './dto/review-prescription.dto';
 import type { UpdatePrescriptionDto } from './dto/update-prescription.dto';
+import { PrescriptionEventsService } from './prescription-events.service';
 
 type PrescriptionWithItems = Prescription & {
   items: Array<PrescriptionItem & { medicine: Medicine | null }>;
@@ -39,6 +43,11 @@ export type PublicPrescription = {
   followUpDate: string | null;
   aiGenerated: boolean;
   version: number;
+  reviewedAt: string | null;
+  reviewedById: string | null;
+  finalizedAt: string | null;
+  finalizedById: string | null;
+  deliveredAt: string | null;
   createdAt: Date;
   updatedAt: Date;
   items: Array<{
@@ -68,6 +77,7 @@ export class PrescriptionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissions: PermissionsService,
+    private readonly events: PrescriptionEventsService,
   ) {}
 
   async create(
@@ -115,6 +125,224 @@ export class PrescriptionsService {
       include: this.prescriptionInclude(),
     });
     return this.toPublic(updated);
+  }
+
+  async review(
+    user: AuthenticatedUser,
+    prescriptionId: string,
+    dto: ReviewPrescriptionDto,
+  ): Promise<PublicPrescription> {
+    const prescription = await this.findPrescription(prescriptionId);
+    await this.permissions.requirePermissions(user.id, prescription.chamberId, [
+      'prescriptions.finalize',
+    ]);
+    if (dto.reviewed === false) {
+      throw this.invalid('reviewed must be true to submit the prescription for review');
+    }
+    if (
+      prescription.status !== PrescriptionStatus.DRAFT &&
+      prescription.status !== PrescriptionStatus.AI_ASSISTED
+    ) {
+      throw this.invalid('Only draft or AI-assisted prescriptions can be submitted for review');
+    }
+
+    const updated = await this.prisma.prescription.update({
+      where: { id: prescription.id },
+      data: {
+        status: PrescriptionStatus.REVIEW_REQUIRED,
+        reviewedAt: new Date(),
+        reviewedById: user.id,
+      },
+      include: this.prescriptionInclude(),
+    });
+    return this.toPublic(updated);
+  }
+
+  async finalize(
+    user: AuthenticatedUser,
+    prescriptionId: string,
+    dto: FinalizePrescriptionDto,
+  ): Promise<PublicPrescription> {
+    if (!dto.confirmation) {
+      throw this.invalid('Confirmation is required to finalize the prescription');
+    }
+    const prescription = await this.findPrescription(prescriptionId);
+    await this.permissions.requirePermissions(user.id, prescription.chamberId, [
+      'prescriptions.finalize',
+    ]);
+    if (
+      prescription.status === PrescriptionStatus.FINALIZED ||
+      prescription.status === PrescriptionStatus.DELIVERED
+    ) {
+      throw new ConflictException({
+        code: ErrorCode.PrescriptionAlreadyFinalized,
+        message: 'Prescription is already finalized',
+        details: [],
+      });
+    }
+    if (prescription.status !== PrescriptionStatus.REVIEW_REQUIRED) {
+      throw new ConflictException({
+        code: ErrorCode.PrescriptionReviewRequired,
+        message: 'Prescription must be reviewed before finalization',
+        details: [],
+      });
+    }
+    if (prescription.items.length === 0) {
+      throw this.invalid('Prescription must contain at least one item before finalization');
+    }
+
+    // Conditional update guards against concurrent finalization attempts.
+    const result = await this.prisma.prescription.updateMany({
+      where: { id: prescription.id, status: PrescriptionStatus.REVIEW_REQUIRED },
+      data: {
+        status: PrescriptionStatus.FINALIZED,
+        finalizedAt: new Date(),
+        finalizedById: user.id,
+      },
+    });
+    if (result.count !== 1) {
+      throw new ConflictException({
+        code: ErrorCode.PrescriptionAlreadyFinalized,
+        message: 'Prescription was finalized concurrently',
+        details: [],
+      });
+    }
+
+    const updated = await this.findPrescription(prescriptionId);
+    this.events.finalized(prescriptionId);
+    return this.toPublic(updated);
+  }
+
+  async deliver(user: AuthenticatedUser, prescriptionId: string): Promise<PublicPrescription> {
+    const prescription = await this.findPrescription(prescriptionId);
+    await this.permissions.requirePermissions(user.id, prescription.chamberId, [
+      'prescriptions.finalize',
+    ]);
+    if (prescription.status !== PrescriptionStatus.FINALIZED) {
+      throw this.invalid('Only finalized prescriptions can be delivered');
+    }
+
+    const updated = await this.prisma.prescription.update({
+      where: { id: prescription.id },
+      data: { status: PrescriptionStatus.DELIVERED, deliveredAt: new Date() },
+      include: this.prescriptionInclude(),
+    });
+    this.events.delivered(prescriptionId);
+    return this.toPublic(updated);
+  }
+
+  async amend(
+    user: AuthenticatedUser,
+    prescriptionId: string,
+    dto: AmendPrescriptionDto,
+  ): Promise<{
+    amendmentId: string;
+    prescriptionId: string;
+    previousVersion: number;
+    newVersion: number;
+    reason: string;
+  }> {
+    const prescription = await this.findPrescription(prescriptionId);
+    await this.permissions.requirePermissions(user.id, prescription.chamberId, [
+      'prescriptions.finalize',
+    ]);
+    if (
+      prescription.status !== PrescriptionStatus.FINALIZED &&
+      prescription.status !== PrescriptionStatus.DELIVERED
+    ) {
+      throw this.invalid('Only finalized prescriptions can be amended');
+    }
+
+    const previousVersion = prescription.version;
+    const newVersion = previousVersion + 1;
+    const changes = JSON.parse(JSON.stringify({ items: dto.items ?? [] })) as Prisma.InputJsonValue;
+
+    const amendment = await this.prisma.transaction(async (tx) => {
+      const created = await tx.prescriptionAmendment.create({
+        data: {
+          prescriptionId: prescription.id,
+          amendedById: user.id,
+          previousVersion,
+          newVersion,
+          reason: dto.reason,
+          changes,
+        },
+      });
+      await tx.prescription.update({
+        where: { id: prescription.id },
+        data: { version: newVersion },
+      });
+      return created;
+    });
+
+    this.events.amended(prescriptionId);
+    return {
+      amendmentId: amendment.id,
+      prescriptionId: prescription.id,
+      previousVersion,
+      newVersion,
+      reason: amendment.reason,
+    };
+  }
+
+  async history(
+    user: AuthenticatedUser,
+    prescriptionId: string,
+  ): Promise<{
+    id: string;
+    prescriptionNumber: string;
+    currentVersion: number;
+    amendments: Array<{
+      id: string;
+      amendedById: string;
+      previousVersion: number;
+      newVersion: number;
+      reason: string;
+      changes: Prisma.JsonValue;
+      createdAt: Date;
+    }>;
+  }> {
+    const prescription = await this.findPrescription(prescriptionId);
+    await this.permissions.requirePermissions(user.id, prescription.chamberId, ['encounters.read']);
+    const amendments = await this.prisma.prescriptionAmendment.findMany({
+      where: { prescriptionId: prescription.id },
+      orderBy: { createdAt: 'asc' as const },
+    });
+
+    return {
+      id: prescription.id,
+      prescriptionNumber: prescription.prescriptionNumber,
+      currentVersion: prescription.version,
+      amendments: amendments.map((amendment) => ({
+        id: amendment.id,
+        amendedById: amendment.amendedById,
+        previousVersion: amendment.previousVersion,
+        newVersion: amendment.newVersion,
+        reason: amendment.reason,
+        changes: amendment.changes,
+        createdAt: amendment.createdAt,
+      })),
+    };
+  }
+
+  async pdf(
+    user: AuthenticatedUser,
+    prescriptionId: string,
+  ): Promise<{
+    status: string;
+    prescriptionId: string;
+  }> {
+    const prescription = await this.findPrescription(prescriptionId);
+    await this.permissions.requirePermissions(user.id, prescription.chamberId, ['encounters.read']);
+    if (
+      prescription.status !== PrescriptionStatus.FINALIZED &&
+      prescription.status !== PrescriptionStatus.DELIVERED
+    ) {
+      throw this.invalid('A PDF is only available for finalized prescriptions');
+    }
+
+    this.events.pdfRequested(prescriptionId);
+    return { status: 'PROCESSING', prescriptionId: prescription.id };
   }
 
   private async createWithRetry(
@@ -261,6 +489,11 @@ export class PrescriptionsService {
         : null,
       aiGenerated: prescription.aiGenerated,
       version: prescription.version,
+      reviewedAt: prescription.reviewedAt ? prescription.reviewedAt.toISOString() : null,
+      reviewedById: prescription.reviewedById,
+      finalizedAt: prescription.finalizedAt ? prescription.finalizedAt.toISOString() : null,
+      finalizedById: prescription.finalizedById,
+      deliveredAt: prescription.deliveredAt ? prescription.deliveredAt.toISOString() : null,
       createdAt: prescription.createdAt,
       updatedAt: prescription.updatedAt,
       items: prescription.items.map((item) => ({

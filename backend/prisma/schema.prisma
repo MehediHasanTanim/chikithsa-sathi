@@ -726,6 +726,11 @@ model Prescription {
   advice             String?            @db.Text
   followUpDate       DateTime?
   aiGenerated        Boolean            @default(false)
+  reviewedAt         DateTime?
+  reviewedById       String?            @db.Uuid
+  finalizedAt        DateTime?
+  finalizedById      String?            @db.Uuid
+  deliveredAt        DateTime?
   version            Int                @default(1)
 
   createdAt DateTime @default(now())
@@ -736,7 +741,8 @@ model Prescription {
   doctor    DoctorProfile @relation("PrescriptionDoctor", fields: [doctorId], references: [id], onDelete: Cascade)
   encounter Encounter     @relation(fields: [encounterId], references: [id], onDelete: Cascade)
 
-  items PrescriptionItem[]
+  items      PrescriptionItem[]
+  amendments PrescriptionAmendment[]
 
   @@index([patientId, createdAt])
   @@index([doctorId, createdAt])
@@ -771,6 +777,23 @@ model PrescriptionItem {
 
   @@index([prescriptionId, sortOrder])
   @@index([medicineId])
+}
+
+// ===== Sprint 12: Prescription Review & Finalization =====
+
+model PrescriptionAmendment {
+  id              String   @id @default(uuid()) @db.Uuid
+  prescriptionId  String   @db.Uuid
+  amendedById     String   @db.Uuid
+  previousVersion Int
+  newVersion      Int
+  reason          String   @db.Text
+  changes         Json
+  createdAt       DateTime @default(now())
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+
+  @@index([prescriptionId, createdAt])
 }
 
 // ===== Sprint 9: Clinical Records =====
