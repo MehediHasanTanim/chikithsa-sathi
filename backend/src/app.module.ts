@@ -15,6 +15,7 @@ import { PermissionsModule } from '@modules/permissions/permissions.module';
 import { StaffModule } from '@modules/staff/staff.module';
 import { PatientsModule } from '@modules/patients/patients.module';
 import { AppointmentsModule } from '@modules/appointments/appointments.module';
+import { QueueModule } from '@modules/queue/queue.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { AppointmentsModule } from '@modules/appointments/appointments.module';
     StaffModule,
     PatientsModule,
     AppointmentsModule,
+    QueueModule,
   ],
 })
 export class AppModule {}

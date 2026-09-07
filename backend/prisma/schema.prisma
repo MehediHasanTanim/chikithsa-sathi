@@ -175,6 +175,7 @@ model DoctorProfile {
   chamberMemberships ChamberMembership[]
   schedules          Schedule[]
   appointments       Appointment[]
+  queueEntries       QueueEntry[]
 
   @@index([specialization])
   @@index([bmdcNumber])
@@ -239,11 +240,13 @@ model Chamber {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  owner        DoctorProfile       @relation("ChamberOwner", fields: [ownerDoctorId], references: [id])
-  memberships  ChamberMembership[]
-  schedules    Schedule[]
-  patients     PatientChamber[]
-  appointments Appointment[]
+  owner         DoctorProfile       @relation("ChamberOwner", fields: [ownerDoctorId], references: [id])
+  memberships   ChamberMembership[]
+  schedules     Schedule[]
+  patients      PatientChamber[]
+  appointments  Appointment[]
+  queueEntries  QueueEntry[]
+  queueCounters DailyQueueCounter[]
 
   @@index([ownerDoctorId])
   @@index([status])
@@ -386,6 +389,7 @@ model Patient {
   allergies    PatientAllergy[]
   appointments Appointment[]
   conditions   PatientCondition[]
+  queueEntries QueueEntry[]
 
   @@index([phone])
   @@index([fullName])
@@ -497,7 +501,69 @@ model Appointment {
   patient Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
   doctor  DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
 
+  queueEntry QueueEntry?
+
   @@index([chamberId, scheduledDate, status])
   @@index([doctorId, scheduledAt])
   @@index([patientId, scheduledAt])
+}
+
+// ===== Sprint 7: Queue Management =====
+
+enum QueueStatus {
+  WAITING
+  CALLED
+  IN_CONSULTATION
+  COMPLETED
+  SKIPPED
+  CANCELLED
+  NO_SHOW
+}
+
+model DailyQueueCounter {
+  id         String   @id @default(uuid()) @db.Uuid
+  chamberId  String   @db.Uuid
+  queueDate  DateTime @db.Date
+  lastNumber Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chamber Chamber @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+
+  @@unique([chamberId, queueDate])
+}
+
+model QueueEntry {
+  id            String  @id @default(uuid()) @db.Uuid
+  chamberId     String  @db.Uuid
+  patientId     String  @db.Uuid
+  appointmentId String? @unique @db.Uuid
+  doctorId      String  @db.Uuid
+
+  queueDate   DateTime @db.Date
+  queueNumber Int
+
+  status   QueueStatus @default(WAITING)
+  priority Int         @default(0)
+
+  checkedInAt           DateTime  @default(now())
+  calledAt              DateTime?
+  consultationStartedAt DateTime?
+  completedAt           DateTime?
+
+  skipReason String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chamber     Chamber       @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+  patient     Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointment Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  doctor      DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([chamberId, queueDate, queueNumber])
+  @@index([chamberId, queueDate, status])
+  @@index([doctorId, queueDate, status])
+  @@index([patientId, queueDate])
 }

@@ -45,6 +45,10 @@ export const ErrorCode = {
   AppointmentConflict: 'APPOINTMENT_CONFLICT',
   AppointmentInvalid: 'APPOINTMENT_INVALID',
   AppointmentCodeExists: 'APPOINTMENT_CODE_EXISTS',
+  QueueEntryNotFound: 'QUEUE_ENTRY_NOT_FOUND',
+  QueueInvalidTransition: 'QUEUE_INVALID_STATE_TRANSITION',
+  QueueDuplicateCheckIn: 'QUEUE_DUPLICATE_CHECK_IN',
+  QueueInvalid: 'QUEUE_INVALID',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
