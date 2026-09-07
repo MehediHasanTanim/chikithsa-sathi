@@ -174,6 +174,7 @@ model DoctorProfile {
   chambersOwned      Chamber[]                 @relation("ChamberOwner")
   chamberMemberships ChamberMembership[]
   schedules          Schedule[]
+  appointments       Appointment[]
 
   @@index([specialization])
   @@index([bmdcNumber])
@@ -238,10 +239,11 @@ model Chamber {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  owner       DoctorProfile       @relation("ChamberOwner", fields: [ownerDoctorId], references: [id])
-  memberships ChamberMembership[]
-  schedules   Schedule[]
-  patients    PatientChamber[]
+  owner        DoctorProfile       @relation("ChamberOwner", fields: [ownerDoctorId], references: [id])
+  memberships  ChamberMembership[]
+  schedules    Schedule[]
+  patients     PatientChamber[]
+  appointments Appointment[]
 
   @@index([ownerDoctorId])
   @@index([status])
@@ -344,22 +346,22 @@ model RolePermission {
 // ===== Sprint 5: Patient Management =====
 
 model Patient {
-  id            String  @id @default(uuid()) @db.Uuid
-  patientCode   String  @unique @db.VarChar(50)
+  id          String @id @default(uuid()) @db.Uuid
+  patientCode String @unique @db.VarChar(50)
 
-  firstName     String  @db.VarChar(100)
-  lastName      String? @db.VarChar(100)
-  fullName      String  @db.VarChar(200)
-  nameBangla    String? @db.VarChar(200)
+  firstName  String  @db.VarChar(100)
+  lastName   String? @db.VarChar(100)
+  fullName   String  @db.VarChar(200)
+  nameBangla String? @db.VarChar(200)
 
   phone          String? @db.VarChar(30)
   alternatePhone String? @db.VarChar(30)
   email          String? @db.VarChar(255)
 
   dateOfBirth DateTime?
-  gender      String?  @db.VarChar(30)
-  bloodGroup  String?  @db.VarChar(10)
-  nationalId  String?  @db.VarChar(100)
+  gender      String?   @db.VarChar(30)
+  bloodGroup  String?   @db.VarChar(10)
+  nationalId  String?   @db.VarChar(100)
 
   addressLine1 String? @db.VarChar(255)
   addressLine2 String? @db.VarChar(255)
@@ -380,9 +382,10 @@ model Patient {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  chambers   PatientChamber[]
-  allergies  PatientAllergy[]
-  conditions PatientCondition[]
+  chambers     PatientChamber[]
+  allergies    PatientAllergy[]
+  appointments Appointment[]
+  conditions   PatientCondition[]
 
   @@index([phone])
   @@index([fullName])
@@ -391,15 +394,15 @@ model Patient {
 }
 
 model PatientChamber {
-  id           String   @id @default(uuid()) @db.Uuid
-  patientId    String   @db.Uuid
-  chamberId    String   @db.Uuid
+  id           String    @id @default(uuid()) @db.Uuid
+  patientId    String    @db.Uuid
+  chamberId    String    @db.Uuid
   firstVisitAt DateTime?
   lastVisitAt  DateTime?
-  visitCount   Int      @default(0)
-  notes        String?  @db.Text
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  visitCount   Int       @default(0)
+  notes        String?   @db.Text
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
   chamber Chamber @relation(fields: [chamberId], references: [id], onDelete: Cascade)
@@ -409,13 +412,13 @@ model PatientChamber {
 }
 
 model PatientAllergy {
-  id        String   @id @default(uuid()) @db.Uuid
-  patientId String   @db.Uuid
+  id        String @id @default(uuid()) @db.Uuid
+  patientId String @db.Uuid
 
-  allergen  String   @db.VarChar(255)
-  reaction  String?  @db.VarChar(255)
-  severity  String?  @db.VarChar(50)
-  notes     String?  @db.Text
+  allergen String  @db.VarChar(255)
+  reaction String? @db.VarChar(255)
+  severity String? @db.VarChar(50)
+  notes    String? @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -426,13 +429,13 @@ model PatientAllergy {
 }
 
 model PatientCondition {
-  id          String   @id @default(uuid()) @db.Uuid
-  patientId   String   @db.Uuid
+  id        String @id @default(uuid()) @db.Uuid
+  patientId String @db.Uuid
 
-  condition   String   @db.VarChar(255)
+  condition   String    @db.VarChar(255)
   diagnosedAt DateTime?
-  status      String?  @db.VarChar(50)
-  notes       String?  @db.Text
+  status      String?   @db.VarChar(50)
+  notes       String?   @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -440,4 +443,61 @@ model PatientCondition {
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
   @@index([patientId])
+}
+
+// ===== Sprint 6: Appointments =====
+
+enum AppointmentStatus {
+  BOOKED
+  CONFIRMED
+  CHECKED_IN
+  IN_QUEUE
+  IN_CONSULTATION
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentType {
+  NEW_PATIENT
+  FOLLOW_UP
+  EMERGENCY
+  ROUTINE
+}
+
+model Appointment {
+  id              String @id @default(uuid()) @db.Uuid
+  appointmentCode String @unique @db.VarChar(50)
+
+  chamberId String @db.Uuid
+  patientId String @db.Uuid
+  doctorId  String @db.Uuid
+
+  scheduledAt   DateTime
+  scheduledDate DateTime @db.Date
+
+  type   AppointmentType   @default(NEW_PATIENT)
+  status AppointmentStatus @default(BOOKED)
+
+  tokenNumber Int?
+  reason      String? @db.Text
+  notes       String? @db.Text
+
+  bookedByUserId String? @db.Uuid
+
+  checkedInAt        DateTime?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chamber Chamber       @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+  patient Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor  DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([chamberId, scheduledDate, status])
+  @@index([doctorId, scheduledAt])
+  @@index([patientId, scheduledAt])
 }

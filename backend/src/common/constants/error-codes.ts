@@ -41,6 +41,10 @@ export const ErrorCode = {
   PatientDuplicate: 'PATIENT_DUPLICATE',
   PatientForbidden: 'PATIENT_FORBIDDEN',
   PatientCodeExists: 'PATIENT_CODE_EXISTS',
+  AppointmentNotFound: 'APPOINTMENT_NOT_FOUND',
+  AppointmentConflict: 'APPOINTMENT_CONFLICT',
+  AppointmentInvalid: 'APPOINTMENT_INVALID',
+  AppointmentCodeExists: 'APPOINTMENT_CODE_EXISTS',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
