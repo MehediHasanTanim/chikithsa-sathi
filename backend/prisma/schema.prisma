@@ -394,6 +394,7 @@ model Patient {
   queueEntries QueueEntry[]
   encounters   Encounter[]
   vitals       Vital[]
+  diagnosticReports DiagnosticReport[]
 
   @@index([phone])
   @@index([fullName])
@@ -616,6 +617,7 @@ model Encounter {
   vitals          Vital[]
   diagnoses       EncounterDiagnosis[]
   investigations  Investigation[]
+  reports         DiagnosticReport[]
 
   @@index([chamberId, encounterDate])
   @@index([patientId, encounterDate])
@@ -735,6 +737,96 @@ model Investigation {
 
   encounter Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
 
+  reports DiagnosticReport[]
+
   @@index([encounterId])
   @@index([name])
+}
+
+// ===== Sprint 10: Reports & Files =====
+
+enum FileStatus {
+  UPLOADING
+  AVAILABLE
+  FAILED
+  DELETED
+}
+
+enum FileCategory {
+  PROFILE_PHOTO
+  VERIFICATION_DOCUMENT
+  DIAGNOSTIC_REPORT
+  PRESCRIPTION_ATTACHMENT
+  PATIENT_DOCUMENT
+  OTHER
+}
+
+enum DiagnosticReportStatus {
+  PENDING
+  AVAILABLE
+  REVIEWED
+  ARCHIVED
+}
+
+model FileObject {
+  id           String       @id @default(uuid()) @db.Uuid
+  storageKey   String       @unique @db.VarChar(500)
+  originalName String       @db.VarChar(255)
+  mimeType     String       @db.VarChar(150)
+  sizeBytes    BigInt
+  category     FileCategory
+  status       FileStatus   @default(UPLOADING)
+  checksum     String?      @db.VarChar(128)
+  uploadedById String?      @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  diagnosticReports DiagnosticReportFile[]
+
+  @@index([category, status])
+  @@index([uploadedById])
+}
+
+model DiagnosticReport {
+  id              String                 @id @default(uuid()) @db.Uuid
+  patientId       String                 @db.Uuid
+  encounterId     String                 @db.Uuid
+  investigationId String?                @db.Uuid
+  title           String                 @db.VarChar(255)
+  reportDate      DateTime?
+  status          DiagnosticReportStatus @default(AVAILABLE)
+  summary         String?                @db.Text
+  findings        String?                @db.Text
+  interpretation  String?                @db.Text
+  aiSummary       String?                @db.Text
+  aiAnalysis      String?                @db.Text
+  reviewedById    String?                @db.Uuid
+  reviewedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounter     Encounter     @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  investigation Investigation? @relation(fields: [investigationId], references: [id], onDelete: SetNull)
+
+  files DiagnosticReportFile[]
+
+  @@index([patientId, reportDate])
+  @@index([encounterId])
+  @@index([status])
+}
+
+model DiagnosticReportFile {
+  id        String   @id @default(uuid()) @db.Uuid
+  reportId  String   @db.Uuid
+  fileId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  report DiagnosticReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  file   FileObject       @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, fileId])
 }

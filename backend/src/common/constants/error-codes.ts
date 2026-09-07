@@ -58,6 +58,11 @@ export const ErrorCode = {
   DiagnosisNotFound: 'DIAGNOSIS_NOT_FOUND',
   InvestigationNotFound: 'INVESTIGATION_NOT_FOUND',
   ClinicalInvalid: 'CLINICAL_INVALID',
+  FileNotFound: 'FILE_NOT_FOUND',
+  FileInvalid: 'FILE_INVALID',
+  FileNotAvailable: 'FILE_NOT_AVAILABLE',
+  FileForbidden: 'FILE_FORBIDDEN',
+  ReportNotFound: 'REPORT_NOT_FOUND',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

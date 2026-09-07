@@ -18,6 +18,8 @@ import { AppointmentsModule } from '@modules/appointments/appointments.module';
 import { QueueModule } from '@modules/queue/queue.module';
 import { EncountersModule } from '@modules/encounters/encounters.module';
 import { ClinicalModule } from '@modules/clinical/clinical.module';
+import { FilesModule } from '@modules/files/files.module';
+import { ReportsModule } from '@modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -39,6 +41,8 @@ import { ClinicalModule } from '@modules/clinical/clinical.module';
     QueueModule,
     EncountersModule,
     ClinicalModule,
+    FilesModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}
