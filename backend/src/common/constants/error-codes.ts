@@ -22,6 +22,21 @@ export const ErrorCode = {
   AuthRefreshTokenInvalid: 'AUTH_REFRESH_TOKEN_INVALID',
   AuthSessionRevoked: 'AUTH_SESSION_REVOKED',
   AuthRateLimited: 'AUTH_RATE_LIMITED',
+  DoctorNotFound: 'DOCTOR_NOT_FOUND',
+  ChamberNotFound: 'CHAMBER_NOT_FOUND',
+  ChamberCodeExists: 'CHAMBER_CODE_EXISTS',
+  ChamberForbidden: 'CHAMBER_FORBIDDEN',
+  ChamberNotOwner: 'CHAMBER_NOT_OWNER',
+  ScheduleNotFound: 'SCHEDULE_NOT_FOUND',
+  ScheduleInvalid: 'SCHEDULE_INVALID',
+  ScheduleOverlap: 'SCHEDULE_OVERLAP',
+  VerificationNotFound: 'VERIFICATION_NOT_FOUND',
+  VerificationAlreadySubmitted: 'VERIFICATION_ALREADY_SUBMITTED',
+  VerificationInvalidState: 'VERIFICATION_INVALID_STATE',
+  PermissionDenied: 'PERMISSION_DENIED',
+  StaffNotFound: 'STAFF_NOT_FOUND',
+  StaffUserNotFound: 'STAFF_USER_NOT_FOUND',
+  StaffSelfAction: 'STAFF_SELF_ACTION',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

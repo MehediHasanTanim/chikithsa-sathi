@@ -6,22 +6,36 @@ Sprints 1–2 establish the NestJS/Fastify, PostgreSQL, Prisma, and Redis founda
 
 - Node.js 22+
 - npm 10+
-- Docker Desktop (for PostgreSQL and Redis)
+- Docker Desktop (for the complete local stack)
 
 ## Run with Docker
 
-From this directory:
+From this directory, optionally create the Docker environment file first:
 
 ```bash
-docker compose up --build
+cp .env.docker.example .env
+docker compose up --build -d
+docker compose ps
 ```
 
-The API waits for PostgreSQL and Redis, applies committed Prisma migrations, and then starts. Open:
+Compose starts PostgreSQL, Redis (with AOF persistence), a one-shot Prisma migration job, and the API. The API starts only after the migration succeeds and Redis is healthy. Open:
 
 - `http://localhost:3000/health/live` — process liveness only
 - `http://localhost:3000/health/ready` — PostgreSQL and Redis readiness
 - `http://localhost:3000/health` — aggregate health
 - `http://localhost:3000/api/docs` — OpenAPI UI (enabled by default outside production)
+
+Useful operations:
+
+```bash
+docker compose logs -f api
+docker compose logs migrate
+docker compose down
+```
+
+`docker compose down -v` additionally removes the persisted PostgreSQL and Redis volumes.
+
+PostgreSQL is published on host port `5433` by default to avoid a conflict with a locally installed PostgreSQL server; containers continue to use `postgres:5432` internally. Set `POSTGRES_PORT` in `.env` to choose another host port.
 
 Health probes are intentionally unversioned. Future product endpoints use the `/api/v1` prefix.
 

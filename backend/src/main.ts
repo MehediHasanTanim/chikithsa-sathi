@@ -32,7 +32,7 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix('api', {
     exclude: [
       { path: 'health', method: RequestMethod.ALL },
-      { path: 'health/(.*)', method: RequestMethod.ALL },
+      { path: 'health/{*path}', method: RequestMethod.ALL },
     ],
   });
   app.useGlobalPipes(

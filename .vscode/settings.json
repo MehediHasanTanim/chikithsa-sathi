@@ -1,5 +1,6 @@
 {
     "workbench.preferredHighContrastColorTheme": "Cursor Dark",
     "workbench.preferredHighContrastLightColorTheme": "Cursor Dark",
-    "workbench.preferredLightColorTheme": "Cursor Dark"
+    "workbench.preferredLightColorTheme": "Cursor Dark",
+    "prisma.pinToPrisma6": true
 }

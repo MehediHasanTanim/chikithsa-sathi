@@ -30,44 +30,47 @@ enum AuditAction {
 }
 
 model User {
-  id                  String       @id @default(uuid()) @db.Uuid
-  phone               String       @unique @db.VarChar(30)
-  email               String?      @unique @db.VarChar(255)
-  fullName            String       @db.VarChar(200)
+  id                  String     @id @default(uuid()) @db.Uuid
+  phone               String     @unique @db.VarChar(30)
+  email               String?    @unique @db.VarChar(255)
+  fullName            String     @db.VarChar(200)
   passwordHash        String
-  status              UserStatus   @default(PENDING_VERIFICATION)
-  preferredLanguage   String       @default("bn") @db.VarChar(10)
-  timezone            String       @default("Asia/Dhaka") @db.VarChar(64)
-  failedLoginAttempts Int          @default(0)
+  status              UserStatus @default(PENDING_VERIFICATION)
+  preferredLanguage   String     @default("bn") @db.VarChar(10)
+  timezone            String     @default("Asia/Dhaka") @db.VarChar(64)
+  failedLoginAttempts Int        @default(0)
   lockedUntil         DateTime?
   lastLoginAt         DateTime?
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
   deletedAt           DateTime?
 
-  sessions            UserSession[]
-  otpVerifications    OtpVerification[]
-  auditLogs           AuditLog[]
+  sessions         UserSession[]
+  otpVerifications OtpVerification[]
+  auditLogs        AuditLog[]
+
+  doctorProfile DoctorProfile?
+  memberships   ChamberMembership[]
 
   @@index([status])
 }
 
 model UserSession {
-  id               String   @id @default(uuid()) @db.Uuid
-  userId           String   @db.Uuid
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
   refreshTokenHash String
-  tokenVersion     Int      @default(1)
+  tokenVersion     Int       @default(1)
   expiresAt        DateTime
   revokedAt        DateTime?
-  ipAddress        String?  @db.VarChar(100)
-  userAgent        String?  @db.Text
-  deviceId         String?  @db.VarChar(255)
-  platform         String?  @db.VarChar(30)
-  appVersion       String?  @db.VarChar(50)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  ipAddress        String?   @db.VarChar(100)
+  userAgent        String?   @db.Text
+  deviceId         String?   @db.VarChar(255)
+  platform         String?   @db.VarChar(30)
+  appVersion       String?   @db.VarChar(50)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -86,26 +89,253 @@ model OtpVerification {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, purpose])
   @@index([expiresAt])
 }
 
 model AuditLog {
-  id        String      @id @default(uuid()) @db.Uuid
-  userId    String?     @db.Uuid
-  action    AuditAction
-  entityType String     @db.VarChar(100)
-  entityId  String      @db.VarChar(100)
-  requestId String?     @db.VarChar(100)
-  ipAddress String?     @db.VarChar(100)
-  userAgent String?     @db.Text
-  metadata  Json?
-  createdAt DateTime    @default(now())
+  id         String      @id @default(uuid()) @db.Uuid
+  userId     String?     @db.Uuid
+  action     AuditAction
+  entityType String      @db.VarChar(100)
+  entityId   String      @db.VarChar(100)
+  requestId  String?     @db.VarChar(100)
+  ipAddress  String?     @db.VarChar(100)
+  userAgent  String?     @db.Text
+  metadata   Json?
+  createdAt  DateTime    @default(now())
 
-  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@index([action, createdAt])
+}
+
+// ===== Sprint 3: Doctor & Chamber =====
+
+enum UserRole {
+  DOCTOR
+  ASSISTANT_DOCTOR
+  RECEPTIONIST
+  CHAMBER_MANAGER
+  BILLING_STAFF
+  PLATFORM_ADMIN
+}
+
+enum ChamberStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum VerificationStatus {
+  NOT_SUBMITTED
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  RESUBMITTED
+}
+
+model DoctorProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+
+  fullName              String   @db.VarChar(200)
+  nameBangla            String?  @db.VarChar(200)
+  designation           String?  @db.VarChar(200)
+  specialization        String?  @db.VarChar(200)
+  subSpecialization     String?  @db.VarChar(200)
+  qualifications        Json?
+  medicalCollege        String?  @db.VarChar(255)
+  bmdcNumber            String?  @db.VarChar(100)
+  registrationAuthority String?  @db.VarChar(200)
+  yearsOfExperience     Int?
+  consultationFee       Decimal? @db.Decimal(12, 2)
+  bio                   String?  @db.Text
+  bioBangla             String?  @db.Text
+  profileImageFileId    String?  @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verification       ProfessionalVerification?
+  chambersOwned      Chamber[]                 @relation("ChamberOwner")
+  chamberMemberships ChamberMembership[]
+  schedules          Schedule[]
+
+  @@index([specialization])
+  @@index([bmdcNumber])
+}
+
+model ProfessionalVerification {
+  id              String             @id @default(uuid()) @db.Uuid
+  doctorId        String             @unique @db.Uuid
+  status          VerificationStatus @default(NOT_SUBMITTED)
+  submittedAt     DateTime?
+  reviewedAt      DateTime?
+  reviewedById    String?            @db.Uuid
+  rejectionReason String?            @db.Text
+  notes           String?            @db.Text
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  doctor    DoctorProfile          @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  documents VerificationDocument[]
+
+  @@index([status])
+}
+
+model VerificationDocument {
+  id             String   @id @default(uuid()) @db.Uuid
+  verificationId String   @db.Uuid
+  fileId         String   @db.Uuid
+  documentType   String   @db.VarChar(100)
+  fileName       String?  @db.VarChar(255)
+  createdAt      DateTime @default(now())
+
+  verification ProfessionalVerification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+
+  @@index([verificationId])
+}
+
+model Chamber {
+  id            String @id @default(uuid()) @db.Uuid
+  ownerDoctorId String @db.Uuid
+
+  name        String  @db.VarChar(200)
+  nameBangla  String? @db.VarChar(200)
+  chamberCode String  @unique @db.VarChar(50)
+
+  addressLine1 String? @db.VarChar(255)
+  addressLine2 String? @db.VarChar(255)
+  area         String? @db.VarChar(150)
+  city         String? @db.VarChar(100)
+  district     String? @db.VarChar(100)
+  division     String? @db.VarChar(100)
+  postalCode   String? @db.VarChar(20)
+
+  phone String? @db.VarChar(30)
+  email String? @db.VarChar(255)
+
+  status          ChamberStatus @default(ACTIVE)
+  defaultCurrency String        @default("BDT") @db.VarChar(10)
+  timezone        String        @default("Asia/Dhaka") @db.VarChar(100)
+  consultationFee Decimal?      @db.Decimal(12, 2)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  owner       DoctorProfile       @relation("ChamberOwner", fields: [ownerDoctorId], references: [id])
+  memberships ChamberMembership[]
+  schedules   Schedule[]
+
+  @@index([ownerDoctorId])
+  @@index([status])
+  @@index([city, district])
+}
+
+model ChamberMembership {
+  id          String           @id @default(uuid()) @db.Uuid
+  chamberId   String           @db.Uuid
+  userId      String           @db.Uuid
+  role        UserRole
+  status      MembershipStatus @default(INVITED)
+  invitedById String?          @db.Uuid
+  invitedAt   DateTime?
+  joinedAt    DateTime?
+  removedAt   DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  chamber         Chamber        @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  doctorProfile   DoctorProfile? @relation(fields: [doctorProfileId], references: [id])
+  doctorProfileId String?        @db.Uuid
+
+  @@unique([chamberId, userId])
+  @@index([userId])
+  @@index([chamberId, role])
+  @@index([chamberId, status])
+}
+
+model Schedule {
+  id        String @id @default(uuid()) @db.Uuid
+  chamberId String @db.Uuid
+  doctorId  String @db.Uuid
+
+  dayOfWeek           Int
+  startTime           String  @db.VarChar(5)
+  endTime             String  @db.VarChar(5)
+  slotDurationMinutes Int     @default(15)
+  maxPatients         Int?
+  isActive            Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chamber Chamber         @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+  doctor  DoctorProfile   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  breaks  ScheduleBreak[]
+
+  @@index([chamberId, dayOfWeek])
+  @@index([doctorId, dayOfWeek])
+}
+
+model ScheduleBreak {
+  id         String   @id @default(uuid()) @db.Uuid
+  scheduleId String   @db.Uuid
+  startTime  String   @db.VarChar(5)
+  endTime    String   @db.VarChar(5)
+  reason     String?  @db.VarChar(255)
+  createdAt  DateTime @default(now())
+
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId])
+}
+
+// ===== Sprint 4: Staff & RBAC =====
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  description String?  @db.Text
+  isSystem    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique @db.VarChar(150)
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  id           String     @id @default(uuid()) @db.Uuid
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
 }

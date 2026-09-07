@@ -7,6 +7,12 @@ import { InfrastructureModule } from '@infrastructure/infrastructure.module';
 import { HealthModule } from '@modules/health/health.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { UsersModule } from '@modules/users/users.module';
+import { DoctorsModule } from '@modules/doctors/doctors.module';
+import { ChambersModule } from '@modules/chambers/chambers.module';
+import { SchedulesModule } from '@modules/schedules/schedules.module';
+import { VerificationModule } from '@modules/verification/verification.module';
+import { PermissionsModule } from '@modules/permissions/permissions.module';
+import { StaffModule } from '@modules/staff/staff.module';
 
 @Module({
   imports: [
@@ -17,6 +23,12 @@ import { UsersModule } from '@modules/users/users.module';
     HealthModule,
     AuthModule,
     UsersModule,
+    DoctorsModule,
+    ChambersModule,
+    SchedulesModule,
+    VerificationModule,
+    PermissionsModule,
+    StaffModule,
   ],
 })
 export class AppModule {}

@@ -1,51 +1,113 @@
+name: chamber-management
+
+x-api-image: &api-image
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: chamber-management-api:local
+
+x-api-environment: &api-environment
+  NODE_ENV: ${NODE_ENV:-development}
+  PORT: 3000
+  DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://chamber:chamber@postgres:5432/chamber_management?schema=public&connection_limit=10}
+  REDIS_URL: ${DOCKER_REDIS_URL:-redis://redis:6379}
+  APP_NAME: ${APP_NAME:-Chamber Management API}
+  APP_URL: ${APP_URL:-http://localhost:3000}
+  ENABLE_SWAGGER: ${ENABLE_SWAGGER:-true}
+  LOG_LEVEL: ${LOG_LEVEL:-log}
+  TIMEZONE: ${TIMEZONE:-Asia/Dhaka}
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-development-only-access-secret-replace-before-production}
+  JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-development-only-refresh-secret-replace-before-production}
+  JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+  JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
+  OTP_EXPIRY_SECONDS: ${OTP_EXPIRY_SECONDS:-600}
+  OTP_MAX_ATTEMPTS: ${OTP_MAX_ATTEMPTS:-5}
+  OTP_RESEND_COOLDOWN_SECONDS: ${OTP_RESEND_COOLDOWN_SECONDS:-60}
+  AUTH_MAX_LOGIN_ATTEMPTS: ${AUTH_MAX_LOGIN_ATTEMPTS:-5}
+  AUTH_LOCKOUT_SECONDS: ${AUTH_LOCKOUT_SECONDS:-900}
+
 services:
   postgres:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: chamber
-      POSTGRES_PASSWORD: chamber
-      POSTGRES_DB: chamber_management
+      POSTGRES_USER: ${POSTGRES_USER:-chamber}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chamber}
+      POSTGRES_DB: ${POSTGRES_DB:-chamber_management}
     ports:
-      - '5432:5432'
+      - '${POSTGRES_PORT:-5433}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U chamber -d chamber_management']
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 12
+      start_period: 10s
+    networks:
+      - chamber_network
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
     ports:
-      - '6379:6379'
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 12
+      start_period: 5s
+    networks:
+      - chamber_network
 
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    environment:
-      NODE_ENV: development
-      PORT: 3000
-      DATABASE_URL: postgresql://chamber:chamber@postgres:5432/chamber_management?schema=public&connection_limit=10
-      REDIS_URL: redis://redis:6379
-      ENABLE_SWAGGER: 'true'
-      TIMEZONE: Asia/Dhaka
-      JWT_ACCESS_SECRET: development-only-access-secret-replace-before-production
-      JWT_REFRESH_SECRET: development-only-refresh-secret-replace-before-production
-    ports:
-      - '3000:3000'
+  migrate:
+    image: chamber-management-api:local
+    restart: 'no'
+    user: root
+    environment: *api-environment
+    command: ['npx', 'prisma', 'migrate', 'deploy']
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - chamber_network
+
+  api:
+    <<: *api-image
+    restart: unless-stopped
+    environment: *api-environment
+    command: ['node', 'dist/main']
+    ports:
+      - '${API_PORT:-3000}:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health/live').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    networks:
+      - chamber_network
 
 volumes:
   postgres_data:
+  redis_data:
+
+networks:
+  chamber_network:
+    driver: bridge
