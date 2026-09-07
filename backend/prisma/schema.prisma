@@ -252,6 +252,7 @@ model Chamber {
   queueCounters DailyQueueCounter[]
   encounters    Encounter[]
   prescriptions Prescription[]
+  payments      Payment[]
 
   @@index([ownerDoctorId])
   @@index([status])
@@ -399,6 +400,7 @@ model Patient {
   vitals       Vital[]
   diagnosticReports DiagnosticReport[]
   prescriptions Prescription[]
+  payments      Payment[]
 
   @@index([phone])
   @@index([fullName])
@@ -512,6 +514,7 @@ model Appointment {
 
   queueEntry QueueEntry?
   encounter  Encounter?
+  payments   Payment[]
 
   @@index([chamberId, scheduledDate, status])
   @@index([doctorId, scheduledAt])
@@ -623,6 +626,7 @@ model Encounter {
   investigations  Investigation[]
   reports         DiagnosticReport[]
   prescriptions   Prescription[]
+  payments        Payment[]
 
   @@index([chamberId, encounterDate])
   @@index([patientId, encounterDate])
@@ -956,6 +960,7 @@ model FileObject {
   deletedAt DateTime?
 
   diagnosticReports DiagnosticReportFile[]
+  receipts          Receipt[]
 
   @@index([category, status])
   @@index([uploadedById])
@@ -1001,4 +1006,98 @@ model DiagnosticReportFile {
   file   FileObject       @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@unique([reportId, fileId])
+}
+
+// ===== Sprint 13: Payments & Receipts =====
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  MOBILE_PAYMENT
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PROCESSED
+}
+
+model Payment {
+  id            String @id @default(uuid()) @db.Uuid
+  paymentNumber String @unique @db.VarChar(50)
+
+  chamberId     String  @db.Uuid
+  patientId     String  @db.Uuid
+  encounterId   String? @db.Uuid
+  appointmentId String? @db.Uuid
+
+  amount   Decimal       @db.Decimal(12, 2)
+  currency String        @default("BDT") @db.VarChar(10)
+  method   PaymentMethod
+  status   PaymentStatus @default(PAID)
+
+  transactionReference String? @db.VarChar(100)
+  idempotencyKey       String? @db.VarChar(100)
+  notes                String? @db.Text
+
+  receivedById String   @db.Uuid
+  receivedAt   DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chamber     Chamber      @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+  patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounter   Encounter?   @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  receipts Receipt[]
+  refunds  PaymentRefund[]
+
+  @@unique([chamberId, idempotencyKey])
+  @@index([chamberId, createdAt])
+  @@index([patientId, createdAt])
+  @@index([encounterId])
+  @@index([status])
+}
+
+model Receipt {
+  id            String   @id @default(uuid()) @db.Uuid
+  paymentId     String   @db.Uuid
+  receiptNumber String   @unique @db.VarChar(50)
+  issuedAt      DateTime @default(now())
+  issuedById    String   @db.Uuid
+  fileId        String?  @db.Uuid
+  createdAt     DateTime @default(now())
+
+  payment Payment     @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  file    FileObject? @relation(fields: [fileId], references: [id], onDelete: SetNull)
+
+  @@index([paymentId])
+}
+
+model PaymentRefund {
+  id            String       @id @default(uuid()) @db.Uuid
+  paymentId     String       @db.Uuid
+  amount        Decimal      @db.Decimal(12, 2)
+  reason        String       @db.Text
+  status        RefundStatus @default(PROCESSED)
+  requestedById String       @db.Uuid
+  approvedById  String?      @db.Uuid
+  processedAt   DateTime?
+  createdAt     DateTime     @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId, createdAt])
 }

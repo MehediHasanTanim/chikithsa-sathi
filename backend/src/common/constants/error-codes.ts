@@ -69,6 +69,11 @@ export const ErrorCode = {
   PrescriptionCodeExists: 'PRESCRIPTION_CODE_EXISTS',
   PrescriptionAlreadyFinalized: 'PRESCRIPTION_ALREADY_FINALIZED',
   PrescriptionReviewRequired: 'PRESCRIPTION_REVIEW_REQUIRED',
+  PaymentNotFound: 'PAYMENT_NOT_FOUND',
+  PaymentInvalidAmount: 'PAYMENT_INVALID_AMOUNT',
+  PaymentAlreadyRefunded: 'PAYMENT_ALREADY_REFUNDED',
+  PaymentRefundExceedsBalance: 'PAYMENT_REFUND_EXCEEDS_BALANCE',
+  PaymentPermissionDenied: 'PAYMENT_PERMISSION_DENIED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

@@ -20,6 +20,7 @@ export const PERMISSIONS = {
   'prescriptions.finalize': 'Finalize prescriptions',
   'payments.create': 'Record payments',
   'payments.read': 'View payments',
+  'payments.refund': 'Refund payments',
   'staff.read': 'View chamber staff',
   'staff.invite': 'Invite staff to a chamber',
   'staff.manage': 'Change or remove staff',
@@ -72,6 +73,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly string[]> = {
     'staff.invite',
     'staff.manage',
   ],
-  BILLING_STAFF: ['patients.read', 'appointments.read', 'payments.create', 'payments.read'],
+  BILLING_STAFF: [
+    'patients.read',
+    'appointments.read',
+    'payments.create',
+    'payments.read',
+    'payments.refund',
+  ],
   PLATFORM_ADMIN: PERMISSION_CODES,
 };
