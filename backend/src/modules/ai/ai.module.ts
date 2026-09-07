@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 
 import { AuthModule } from '@modules/auth/auth.module';
 import { PermissionsModule } from '@modules/permissions/permissions.module';
+import { PrescriptionsModule } from '@modules/prescriptions/prescriptions.module';
+import { AIClinicalFeaturesService } from './ai-clinical-features.service';
+import { AIClinicalOutputService } from './ai-clinical-output.service';
 import { AIContextBuilderService } from './ai-context-builder.service';
 import { AIController } from './ai.controller';
 import { AIOrchestratorService } from './ai-orchestrator.service';
@@ -10,14 +13,16 @@ import { AISafetyService } from './ai-safety.service';
 import { OpenAIProvider } from './providers/openai.provider';
 
 @Module({
-  imports: [AuthModule, PermissionsModule],
+  imports: [AuthModule, PermissionsModule, PrescriptionsModule],
   controllers: [AIController],
   providers: [
     AIContextBuilderService,
     AISafetyService,
+    AIClinicalOutputService,
     OpenAIProvider,
     { provide: AI_PROVIDER, useExisting: OpenAIProvider },
     AIOrchestratorService,
+    AIClinicalFeaturesService,
   ],
   exports: [AIOrchestratorService],
 })

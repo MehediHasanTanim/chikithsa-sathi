@@ -12,6 +12,12 @@ const PROMPT_INJECTION_PATTERNS = [
   /act as (an?|the) (system|developer)/i,
 ];
 
+const UNSAFE_OUTPUT_PATTERNS = [
+  /ignore (all |any |the )?(previous|prior|system) instructions/i,
+  /\b(reveal|disclose) (the )?(system prompt|hidden instructions)/i,
+  /<script\b/i,
+];
+
 @Injectable()
 export class AISafetyService {
   assertSafePrompt(prompt: string): void {
@@ -30,6 +36,13 @@ export class AISafetyService {
       throw new BadRequestException({
         code: ErrorCode.AIInvalidResponse,
         message: 'AI provider returned invalid content',
+        details: [],
+      });
+    }
+    if (UNSAFE_OUTPUT_PATTERNS.some((pattern) => pattern.test(normalized))) {
+      throw new BadRequestException({
+        code: ErrorCode.AIUnsafeOutput,
+        message: 'AI provider returned unsafe content',
         details: [],
       });
     }

@@ -42,6 +42,7 @@ export type PublicPrescription = {
   advice: string | null;
   followUpDate: string | null;
   aiGenerated: boolean;
+  aiRequestId: string | null;
   version: number;
   reviewedAt: string | null;
   reviewedById: string | null;
@@ -95,6 +96,26 @@ export class PrescriptionsService {
     return this.toPublic(prescription);
   }
 
+  async createAIAssisted(
+    user: AuthenticatedUser,
+    encounterId: string,
+    dto: CreatePrescriptionDto,
+    aiRequestId: string,
+  ): Promise<PublicPrescription> {
+    const encounter = await this.findEncounter(encounterId);
+    await this.permissions.requirePermissions(user.id, encounter.chamberId, [
+      'prescriptions.create',
+    ]);
+    this.assertEditable(encounter.status);
+
+    const prescription = await this.createWithRetry(encounter, dto, {
+      aiGenerated: true,
+      status: PrescriptionStatus.AI_ASSISTED,
+      aiRequestId,
+    });
+    return this.toPublic(prescription);
+  }
+
   async get(user: AuthenticatedUser, prescriptionId: string): Promise<PublicPrescription> {
     const prescription = await this.findPrescription(prescriptionId);
     await this.permissions.requirePermissions(user.id, prescription.chamberId, ['encounters.read']);
@@ -110,8 +131,11 @@ export class PrescriptionsService {
     await this.permissions.requirePermissions(user.id, prescription.chamberId, [
       'prescriptions.create',
     ]);
-    if (prescription.status !== PrescriptionStatus.DRAFT) {
-      throw this.invalid('Only draft prescriptions can be edited');
+    if (
+      prescription.status !== PrescriptionStatus.DRAFT &&
+      prescription.status !== PrescriptionStatus.AI_ASSISTED
+    ) {
+      throw this.invalid('Only draft or AI-assisted prescriptions can be edited');
     }
 
     const updated = await this.prisma.prescription.update({
@@ -348,6 +372,7 @@ export class PrescriptionsService {
   private async createWithRetry(
     encounter: { id: string; patientId: string; chamberId: string; ownerDoctorId: string },
     dto: CreatePrescriptionDto,
+    options?: { aiGenerated?: boolean; status?: PrescriptionStatus; aiRequestId?: string },
   ): Promise<PrescriptionWithItems> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
@@ -359,6 +384,9 @@ export class PrescriptionsService {
             patientId: encounter.patientId,
             doctorId: encounter.ownerDoctorId,
             encounterId: encounter.id,
+            ...(options?.status ? { status: options.status } : {}),
+            ...(options?.aiGenerated ? { aiGenerated: true } : {}),
+            ...(options?.aiRequestId ? { aiRequestId: options.aiRequestId } : {}),
             language: dto.language,
             clinicalSummary: dto.clinicalSummary,
             advice: dto.advice,
@@ -488,6 +516,7 @@ export class PrescriptionsService {
         ? prescription.followUpDate.toISOString().slice(0, 10)
         : null,
       aiGenerated: prescription.aiGenerated,
+      aiRequestId: prescription.aiRequestId,
       version: prescription.version,
       reviewedAt: prescription.reviewedAt ? prescription.reviewedAt.toISOString() : null,
       reviewedById: prescription.reviewedById,

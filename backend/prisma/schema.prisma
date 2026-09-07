@@ -741,6 +741,7 @@ model Prescription {
   advice             String?            @db.Text
   followUpDate       DateTime?
   aiGenerated        Boolean            @default(false)
+  aiRequestId        String?            @unique @db.Uuid
   reviewedAt         DateTime?
   reviewedById       String?            @db.Uuid
   finalizedAt        DateTime?
@@ -755,6 +756,7 @@ model Prescription {
   patient   Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
   doctor    DoctorProfile @relation("PrescriptionDoctor", fields: [doctorId], references: [id], onDelete: Cascade)
   encounter Encounter     @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  aiRequest AIRequest?    @relation("AIPrescriptionRequest", fields: [aiRequestId], references: [id], onDelete: SetNull)
 
   items      PrescriptionItem[]
   amendments PrescriptionAmendment[]
@@ -1152,11 +1154,12 @@ model AIRequest {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  chamber     Chamber    @relation(fields: [chamberId], references: [id], onDelete: Cascade)
-  patient     Patient?   @relation(fields: [patientId], references: [id], onDelete: SetNull)
-  encounter   Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
-  requestedBy User       @relation("AIRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
-  draft       AIDraft?
+  chamber      Chamber       @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+  patient      Patient?      @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  encounter    Encounter?    @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  requestedBy  User          @relation("AIRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  draft        AIDraft?
+  prescription Prescription? @relation("AIPrescriptionRequest")
 
   @@index([chamberId, createdAt])
   @@index([patientId, createdAt])

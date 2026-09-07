@@ -19,6 +19,7 @@ const prescriptionRecord = {
   advice: null,
   followUpDate: null,
   aiGenerated: false,
+  aiRequestId: null,
   version: 1,
   reviewedAt: null,
   reviewedById: null,
@@ -79,6 +80,55 @@ describe('PrescriptionsService', () => {
 
     expect(prisma.prescription.create).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ id: 'prescription-1', status: PrescriptionStatus.DRAFT });
+  });
+
+  it('creates an AI-assisted prescription that requires clinician review', async () => {
+    prisma.encounter.findUnique.mockResolvedValue({
+      id: 'encounter-1',
+      patientId: 'patient-1',
+      chamberId: 'chamber-1',
+      status: EncounterStatus.IN_PROGRESS,
+      chamber: { ownerDoctorId: 'doctor-1' },
+    });
+    permissions.requirePermissions.mockResolvedValue(undefined);
+    prisma.prescription.create.mockResolvedValue({
+      ...prescriptionRecord,
+      status: PrescriptionStatus.AI_ASSISTED,
+      aiGenerated: true,
+    });
+
+    const result = await service.createAIAssisted(
+      user,
+      'encounter-1',
+      { items: [{ medicineName: 'Example medicine' }] },
+      'ai-request-1',
+    );
+
+    expect(prisma.prescription.create).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe(PrescriptionStatus.AI_ASSISTED);
+    expect(result.aiGenerated).toBe(true);
+    expect(result.aiRequestId).toBeNull();
+  });
+
+  it('allows a clinician to edit an AI-assisted prescription before review', async () => {
+    prisma.prescription.findUnique.mockResolvedValue({
+      ...prescriptionRecord,
+      status: PrescriptionStatus.AI_ASSISTED,
+      aiGenerated: true,
+    });
+    permissions.requirePermissions.mockResolvedValue(undefined);
+    prisma.prescription.update.mockResolvedValue({
+      ...prescriptionRecord,
+      status: PrescriptionStatus.AI_ASSISTED,
+      aiGenerated: true,
+      advice: 'Clinician-edited advice',
+    });
+
+    const result = await service.update(user, 'prescription-1', {
+      advice: 'Clinician-edited advice',
+    });
+
+    expect(result.advice).toBe('Clinician-edited advice');
   });
 
   it('rejects editing a finalized prescription', async () => {
