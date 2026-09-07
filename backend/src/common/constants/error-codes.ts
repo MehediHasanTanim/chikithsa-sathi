@@ -63,6 +63,10 @@ export const ErrorCode = {
   FileNotAvailable: 'FILE_NOT_AVAILABLE',
   FileForbidden: 'FILE_FORBIDDEN',
   ReportNotFound: 'REPORT_NOT_FOUND',
+  MedicineNotFound: 'MEDICINE_NOT_FOUND',
+  PrescriptionNotFound: 'PRESCRIPTION_NOT_FOUND',
+  PrescriptionInvalid: 'PRESCRIPTION_INVALID',
+  PrescriptionCodeExists: 'PRESCRIPTION_CODE_EXISTS',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

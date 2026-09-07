@@ -177,6 +177,8 @@ model DoctorProfile {
   appointments       Appointment[]
   queueEntries       QueueEntry[]
   encounters         Encounter[]
+  createdPrescriptions Prescription[] @relation("PrescriptionDoctor")
+  favoriteMedicines  DoctorMedicineFavorite[]
 
   @@index([specialization])
   @@index([bmdcNumber])
@@ -249,6 +251,7 @@ model Chamber {
   queueEntries  QueueEntry[]
   queueCounters DailyQueueCounter[]
   encounters    Encounter[]
+  prescriptions Prescription[]
 
   @@index([ownerDoctorId])
   @@index([status])
@@ -395,6 +398,7 @@ model Patient {
   encounters   Encounter[]
   vitals       Vital[]
   diagnosticReports DiagnosticReport[]
+  prescriptions Prescription[]
 
   @@index([phone])
   @@index([fullName])
@@ -618,10 +622,155 @@ model Encounter {
   diagnoses       EncounterDiagnosis[]
   investigations  Investigation[]
   reports         DiagnosticReport[]
+  prescriptions   Prescription[]
 
   @@index([chamberId, encounterDate])
   @@index([patientId, encounterDate])
   @@index([doctorId, encounterDate])
+}
+
+// ===== Sprint 11: Medicines & Prescription Builder =====
+
+enum PrescriptionStatus {
+  DRAFT
+  AI_ASSISTED
+  REVIEW_REQUIRED
+  FINALIZED
+  DELIVERED
+  AMENDED
+  CANCELLED
+}
+
+enum PrescriptionItemType {
+  MEDICINE
+  INSTRUCTION
+  INVESTIGATION
+  REFERRAL
+  OTHER
+}
+
+enum MedicineFrequency {
+  ONCE_DAILY
+  TWICE_DAILY
+  THREE_TIMES_DAILY
+  FOUR_TIMES_DAILY
+  EVERY_MORNING
+  EVERY_NIGHT
+  EVERY_4_HOURS
+  EVERY_6_HOURS
+  EVERY_8_HOURS
+  EVERY_12_HOURS
+  BEFORE_MEAL
+  AFTER_MEAL
+  AS_NEEDED
+  CUSTOM
+}
+
+enum DurationUnit {
+  DAY
+  WEEK
+  MONTH
+  DOSE
+  CUSTOM
+}
+
+model Medicine {
+  id                String   @id @default(uuid()) @db.Uuid
+  genericName       String   @db.VarChar(255)
+  genericNameBangla String?  @db.VarChar(255)
+  brandName         String?  @db.VarChar(255)
+  manufacturer      String?  @db.VarChar(255)
+  strength          String?  @db.VarChar(100)
+  dosageForm        String?  @db.VarChar(100)
+  route             String?  @db.VarChar(100)
+  isActive          Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  favorites         DoctorMedicineFavorite[]
+  prescriptionItems PrescriptionItem[]
+
+  @@index([genericName])
+  @@index([genericNameBangla])
+  @@index([brandName])
+  @@index([manufacturer])
+}
+
+model DoctorMedicineFavorite {
+  id         String   @id @default(uuid()) @db.Uuid
+  doctorId   String   @db.Uuid
+  medicineId String   @db.Uuid
+  usageCount Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  medicine Medicine      @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, medicineId])
+  @@index([doctorId, usageCount])
+}
+
+model Prescription {
+  id                 String             @id @default(uuid()) @db.Uuid
+  prescriptionNumber String             @unique @db.VarChar(50)
+  chamberId          String             @db.Uuid
+  patientId          String             @db.Uuid
+  doctorId           String             @db.Uuid
+  encounterId        String             @db.Uuid
+  status             PrescriptionStatus @default(DRAFT)
+  language           String             @default("bn") @db.VarChar(10)
+  clinicalSummary    String?            @db.Text
+  advice             String?            @db.Text
+  followUpDate       DateTime?
+  aiGenerated        Boolean            @default(false)
+  version            Int                @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chamber   Chamber       @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+  patient   Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor    DoctorProfile @relation("PrescriptionDoctor", fields: [doctorId], references: [id], onDelete: Cascade)
+  encounter Encounter     @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  items PrescriptionItem[]
+
+  @@index([patientId, createdAt])
+  @@index([doctorId, createdAt])
+  @@index([encounterId])
+  @@index([status])
+}
+
+model PrescriptionItem {
+  id                String                @id @default(uuid()) @db.Uuid
+  prescriptionId    String                @db.Uuid
+  medicineId        String?               @db.Uuid
+  itemType          PrescriptionItemType  @default(MEDICINE)
+  medicineName      String?               @db.VarChar(255)
+  strength          String?               @db.VarChar(100)
+  dosageForm        String?               @db.VarChar(100)
+  dosage            String?               @db.VarChar(100)
+  frequency         MedicineFrequency?
+  frequencyText     String?               @db.VarChar(255)
+  duration          Int?
+  durationUnit      DurationUnit?
+  quantity          Decimal?              @db.Decimal(10, 2)
+  route             String?               @db.VarChar(100)
+  instructions      String?               @db.Text
+  instructionsBangla String?              @db.Text
+  sortOrder         Int                   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medicine     Medicine?    @relation(fields: [medicineId], references: [id], onDelete: SetNull)
+
+  @@index([prescriptionId, sortOrder])
+  @@index([medicineId])
 }
 
 // ===== Sprint 9: Clinical Records =====

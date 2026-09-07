@@ -2,6 +2,7 @@ import { PrismaClient, type UserRole } from '@prisma/client';
 
 import { PERMISSIONS, ROLE_PERMISSIONS } from '../src/modules/permissions/permissions.constants';
 import { DIAGNOSIS_CATALOG } from '../src/modules/clinical/clinical.constants';
+import { MEDICINE_CATALOG } from '../src/modules/medicines/medicines.constants';
 
 const prisma = new PrismaClient();
 
@@ -50,8 +51,18 @@ async function main(): Promise<void> {
     });
   }
 
+  for (const medicine of MEDICINE_CATALOG) {
+    const existing = await prisma.medicine.findFirst({
+      where: { genericName: medicine.genericName, brandName: medicine.brandName },
+      select: { id: true },
+    });
+    if (!existing) {
+      await prisma.medicine.create({ data: medicine });
+    }
+  }
+
   // eslint-disable-next-line no-console
-  console.log('Seeded roles, permissions, and diagnosis catalog.');
+  console.log('Seeded roles, permissions, diagnosis catalog, and medicines.');
 }
 
 main()
