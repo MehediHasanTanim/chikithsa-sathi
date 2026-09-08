@@ -4,12 +4,13 @@ import {
   Injectable,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { AIRequestStatus, Prisma } from '@prisma/client';
+import { AIRequestStatus, AuditAction, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
 import { PrismaService } from '@database/prisma/prisma.service';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
+import { AuditService } from '@modules/auth/services/audit.service';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 import { type AIProvider, AIProviderError, AI_PROVIDER } from './ai.types';
 import { AIContextBuilderService } from './ai-context-builder.service';
@@ -42,6 +43,7 @@ export class AIOrchestratorService {
     private readonly contextBuilder: AIContextBuilderService,
     private readonly safety: AISafetyService,
     @Inject(AI_PROVIDER) private readonly provider: AIProvider,
+    private readonly audit?: AuditService,
   ) {}
 
   async generate(
@@ -70,6 +72,10 @@ export class AIOrchestratorService {
         contextMetadata: context.metadata,
         disclaimer: MEDICAL_DISCLAIMER,
       },
+    });
+    await this.audit?.recordDomain(AuditAction.AI_REQUESTED, user.id, 'AIRequest', request.id, {
+      feature,
+      chamberId: dto.chamberId,
     });
 
     try {
@@ -125,6 +131,10 @@ export class AIOrchestratorService {
         });
         return { updated, draft };
       });
+      await this.audit?.recordDomain(AuditAction.AI_COMPLETED, user.id, 'AIRequest', request.id, {
+        feature,
+        draftId: result.draft.id,
+      });
 
       return {
         requestId: result.updated.id,
@@ -141,6 +151,9 @@ export class AIOrchestratorService {
       };
     } catch (error) {
       await this.recordFailure(request.id, error);
+      await this.audit?.recordDomain(AuditAction.AI_FAILED, user.id, 'AIRequest', request.id, {
+        feature,
+      });
       if (error instanceof BadRequestException) throw error;
       if (error instanceof AIProviderError) {
         throw new ServiceUnavailableException({

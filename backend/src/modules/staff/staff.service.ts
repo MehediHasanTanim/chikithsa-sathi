@@ -5,12 +5,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ChamberMembership, MembershipStatus, UserRole } from '@prisma/client';
+import { AuditAction, ChamberMembership, MembershipStatus, UserRole } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
 import { PrismaService } from '@database/prisma/prisma.service';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
+import { AuditService } from '@modules/auth/services/audit.service';
 import { PermissionsService } from '@modules/permissions/permissions.service';
+import { NotificationsService } from '@modules/notifications/notifications.service';
 import { isStaffRole } from './staff.constants';
 import type { InviteStaffDto } from './dto/invite-staff.dto';
 import type { UpdateStaffDto } from './dto/update-staff.dto';
@@ -39,6 +41,8 @@ export class StaffService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissions: PermissionsService,
+    private readonly notifications: NotificationsService,
+    private readonly audit?: AuditService,
   ) {}
 
   async list(chamberId: string): Promise<PublicStaffMembership[]> {
@@ -108,6 +112,17 @@ export class StaffService {
         removedAt: null,
       },
     });
+    void this.notifications.staffInvitation(membership.id);
+    await this.audit?.recordDomain(
+      AuditAction.STAFF_INVITED,
+      user.id,
+      'ChamberMembership',
+      membership.id,
+      {
+        chamberId,
+        role: membership.role,
+      },
+    );
     return this.toPublic({ ...membership, user: target });
   }
 
@@ -146,6 +161,26 @@ export class StaffService {
       },
       include: { user: { select: userSelect } },
     });
+    await this.audit?.recordDomain(
+      AuditAction.STAFF_UPDATED,
+      user.id,
+      'ChamberMembership',
+      updated.id,
+      {
+        chamberId: updated.chamberId,
+        role: updated.role,
+        status: updated.status,
+      },
+    );
+    if (dto.role !== undefined) {
+      await this.audit?.recordDomain(
+        AuditAction.PERMISSIONS_CHANGED,
+        user.id,
+        'ChamberMembership',
+        updated.id,
+        { role: updated.role },
+      );
+    }
     return this.toPublic(updated);
   }
 
@@ -160,6 +195,15 @@ export class StaffService {
       data: { status: MembershipStatus.REMOVED, removedAt: new Date() },
       include: { user: { select: userSelect } },
     });
+    await this.audit?.recordDomain(
+      AuditAction.STAFF_REMOVED,
+      user.id,
+      'ChamberMembership',
+      updated.id,
+      {
+        chamberId: updated.chamberId,
+      },
+    );
     return this.toPublic(updated);
   }
 

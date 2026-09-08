@@ -4,13 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { FileObject, FileStatus } from '@prisma/client';
+import { AuditAction, FileObject, FileStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { StorageService } from '@infrastructure/storage/storage.service';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
+import { AuditService } from '@modules/auth/services/audit.service';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 import type { CompleteUploadDto } from './dto/complete-upload.dto';
 import type { CreateUploadUrlDto } from './dto/create-upload-url.dto';
@@ -40,6 +41,7 @@ export class FilesService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly permissions: PermissionsService,
+    private readonly audit?: AuditService,
   ) {}
 
   async createUploadUrl(user: AuthenticatedUser, dto: CreateUploadUrlDto) {
@@ -64,6 +66,9 @@ export class FilesService {
       dto.sizeBytes,
       dto.checksumSha256,
     );
+    await this.audit?.recordDomain(AuditAction.FILE_UPLOADED, user.id, 'FileObject', file.id, {
+      category: file.category,
+    });
     return { fileId: file.id, uploadUrl: url, expiresAt: expiresAt.toISOString() };
   }
 
@@ -102,6 +107,7 @@ export class FilesService {
       where: { id: file.id },
       data: { status: FileStatus.AVAILABLE },
     });
+    await this.audit?.recordDomain(AuditAction.FILE_AVAILABLE, user.id, 'FileObject', file.id);
     return { fileId: file.id, status: FileStatus.AVAILABLE };
   }
 

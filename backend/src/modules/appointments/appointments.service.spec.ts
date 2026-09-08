@@ -77,7 +77,8 @@ describe('AppointmentsService', () => {
     transaction: jest.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)),
   };
   const permissions = { requirePermissions: jest.fn() };
-  const service = new AppointmentsService(prisma as never, permissions as never);
+  const events = { confirmed: jest.fn() };
+  const service = new AppointmentsService(prisma as never, permissions as never, events as never);
 
   beforeEach(() => {
     jest.resetAllMocks();

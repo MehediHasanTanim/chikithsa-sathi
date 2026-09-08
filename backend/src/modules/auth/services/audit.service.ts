@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, Prisma } from '@prisma/client';
 
 import { PrismaService } from '@database/prisma/prisma.service';
 import type { RequestContext } from '../auth.types';
@@ -23,6 +23,24 @@ export class AuditService {
         requestId: context.requestId,
         ipAddress: context.ipAddress,
         userAgent: context.userAgent,
+      },
+    });
+  }
+
+  async recordDomain(
+    action: AuditAction,
+    userId: string | undefined,
+    entityType: string,
+    entityId: string,
+    metadata?: Prisma.InputJsonValue,
+  ): Promise<void> {
+    await this.prisma.auditLog.create({
+      data: {
+        action,
+        ...(userId ? { userId } : {}),
+        entityType,
+        entityId,
+        ...(metadata !== undefined ? { metadata } : {}),
       },
     });
   }

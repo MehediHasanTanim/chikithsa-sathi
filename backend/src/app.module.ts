@@ -24,6 +24,8 @@ import { MedicinesModule } from '@modules/medicines/medicines.module';
 import { PrescriptionsModule } from '@modules/prescriptions/prescriptions.module';
 import { PaymentsModule } from '@modules/payments/payments.module';
 import { AIModule } from '@modules/ai/ai.module';
+import { AnalyticsModule } from '@modules/analytics/analytics.module';
+import { NotificationsModule } from '@modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -51,6 +53,8 @@ import { AIModule } from '@modules/ai/ai.module';
     PrescriptionsModule,
     PaymentsModule,
     AIModule,
+    NotificationsModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule {}

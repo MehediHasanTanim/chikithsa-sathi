@@ -15,6 +15,7 @@ import { ResponseInterceptor } from '@common/interceptors/response.interceptor';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { StorageService } from '@infrastructure/storage/storage.service';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
+import { AuditService } from '@modules/auth/services/audit.service';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { ChamberAccessGuard } from '@modules/chambers/guards/chamber-access.guard';
 import { ChamberAccessService } from '@modules/chambers/services/chamber-access.service';
@@ -22,6 +23,7 @@ import { PermissionsService } from '@modules/permissions/permissions.service';
 import { PermissionGuard } from '@modules/permissions/guards/permission.guard';
 import { FilesController } from '@modules/files/files.controller';
 import { FilesService } from '@modules/files/files.service';
+import { NotificationsService } from '@modules/notifications/notifications.service';
 import { StaffController } from '@modules/staff/staff.controller';
 import { StaffService } from '@modules/staff/staff.service';
 
@@ -63,6 +65,8 @@ describe('Security boundaries (e2e)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: StorageService, useValue: storage },
         { provide: PermissionsService, useValue: permissions },
+        { provide: NotificationsService, useValue: { staffInvitation: jest.fn() } },
+        { provide: AuditService, useValue: { recordDomain: jest.fn() } },
         { provide: ChamberAccessService, useValue: { assertMember: jest.fn() } },
       ],
     })

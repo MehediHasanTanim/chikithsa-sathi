@@ -12,6 +12,7 @@ import { offsetPaginationMeta, toOffsetPagination } from '@common/utils/paginati
 import { PrismaService } from '@database/prisma/prisma.service';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PermissionsService } from '@modules/permissions/permissions.service';
+import { AppointmentEventsService } from './appointment-events.service';
 import type { AppointmentQueryDto } from './dto/appointment-query.dto';
 import type { CancelAppointmentDto } from './dto/cancel-appointment.dto';
 import type { CreateAppointmentDto } from './dto/create-appointment.dto';
@@ -53,6 +54,7 @@ export class AppointmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissions: PermissionsService,
+    private readonly events: AppointmentEventsService,
   ) {}
 
   async create(user: AuthenticatedUser, dto: CreateAppointmentDto): Promise<PublicAppointment> {
@@ -181,6 +183,7 @@ export class AppointmentsService {
       where: { id: appointment.id },
       data: { status: AppointmentStatus.CONFIRMED },
     });
+    this.events.confirmed(updated.id);
     return this.toPublic(updated);
   }
 

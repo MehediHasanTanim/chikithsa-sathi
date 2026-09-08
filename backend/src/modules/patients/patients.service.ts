@@ -4,13 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { MembershipStatus, Patient, Prisma } from '@prisma/client';
+import { AuditAction, MembershipStatus, Patient, Prisma } from '@prisma/client';
 import { randomInt } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
 import { offsetPaginationMeta, toOffsetPagination } from '@common/utils/pagination.util';
 import { PrismaService } from '@database/prisma/prisma.service';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
+import { AuditService } from '@modules/auth/services/audit.service';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 import type { AssociateChamberDto } from './dto/associate-chamber.dto';
 import type { CreatePatientAllergyDto } from './dto/create-patient-allergy.dto';
@@ -57,6 +58,7 @@ export class PatientsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissions: PermissionsService,
+    private readonly audit?: AuditService,
   ) {}
 
   async create(user: AuthenticatedUser, dto: CreatePatientDto): Promise<PublicPatient> {
@@ -65,6 +67,9 @@ export class PatientsService {
 
     const { firstName, lastName } = this.deriveName(dto.fullName);
     const patient = await this.createWithRetry(dto, firstName, lastName, user.id);
+    await this.audit?.recordDomain(AuditAction.PATIENT_CREATED, user.id, 'Patient', patient.id, {
+      chamberId: dto.chamberId,
+    });
     return this.toPublic(patient);
   }
 
@@ -165,6 +170,7 @@ export class PatientsService {
           : {}),
       },
     });
+    await this.audit?.recordDomain(AuditAction.PATIENT_UPDATED, user.id, 'Patient', updated.id);
     return this.toPublic(updated);
   }
 

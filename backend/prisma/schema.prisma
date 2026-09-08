@@ -27,6 +27,46 @@ enum AuditAction {
   AUTH_LOGIN
   AUTH_REFRESHED
   AUTH_LOGOUT
+  PATIENT_CREATED
+  PATIENT_UPDATED
+  ENCOUNTER_CREATED
+  ENCOUNTER_UPDATED
+  PRESCRIPTION_CREATED
+  PRESCRIPTION_REVIEWED
+  PRESCRIPTION_FINALIZED
+  PRESCRIPTION_DELIVERED
+  PAYMENT_CREATED
+  PAYMENT_REFUNDED
+  AI_REQUESTED
+  AI_COMPLETED
+  AI_FAILED
+  STAFF_INVITED
+  STAFF_UPDATED
+  STAFF_REMOVED
+  PERMISSIONS_CHANGED
+  FILE_UPLOADED
+  FILE_AVAILABLE
+}
+
+enum NotificationChannel {
+  PUSH
+  EMAIL
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum NotificationType {
+  APPOINTMENT_CONFIRMATION
+  APPOINTMENT_REMINDER
+  QUEUE_UPDATE
+  PRESCRIPTION_READY
+  PAYMENT_RECEIPT
+  STAFF_INVITATION
 }
 
 model User {
@@ -53,6 +93,7 @@ model User {
   memberships   ChamberMembership[]
   uploadedFiles FileObject[]        @relation("FileUploader")
   aiRequests    AIRequest[]         @relation("AIRequestedBy")
+  notifications Notification[]      @relation("NotificationRecipient")
 
   @@index([status])
 }
@@ -113,6 +154,34 @@ model AuditLog {
 
   @@index([userId, createdAt])
   @@index([action, createdAt])
+}
+
+model Notification {
+  id              String              @id @default(uuid()) @db.Uuid
+  chamberId       String?             @db.Uuid
+  recipientUserId String?             @db.Uuid
+  recipientPhone  String?             @db.VarChar(30)
+  recipientEmail  String?             @db.VarChar(255)
+  type            NotificationType
+  channel         NotificationChannel
+  status          NotificationStatus  @default(PENDING)
+  dedupeKey       String              @unique @db.VarChar(255)
+  payload         Json
+  scheduledAt     DateTime            @default(now())
+  sentAt          DateTime?
+  failedAt        DateTime?
+  attemptCount    Int                 @default(0)
+  lastError       String?             @db.Text
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  chamber       Chamber? @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+  recipientUser User?    @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: SetNull)
+
+  @@index([chamberId, createdAt])
+  @@index([recipientUserId, createdAt])
+  @@index([status, scheduledAt])
+  @@index([type, createdAt])
 }
 
 // ===== Sprint 3: Doctor & Chamber =====
@@ -258,6 +327,7 @@ model Chamber {
   payments      Payment[]
   aiRequests    AIRequest[]
   aiDrafts      AIDraft[]
+  notifications Notification[]
 
   @@index([ownerDoctorId])
   @@index([status])

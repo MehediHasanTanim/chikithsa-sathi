@@ -36,7 +36,8 @@ describe('StaffService', () => {
     },
   };
   const permissions = { requirePermissions: jest.fn(), rolePermissions: jest.fn() };
-  const service = new StaffService(prisma as never, permissions as never);
+  const notifications = { staffInvitation: jest.fn() };
+  const service = new StaffService(prisma as never, permissions as never, notifications as never);
 
   beforeEach(() => {
     jest.resetAllMocks();
