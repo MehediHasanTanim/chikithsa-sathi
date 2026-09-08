@@ -25,7 +25,7 @@ export class OtpService {
     private readonly config: ConfigService,
   ) {}
 
-  async createRegistrationOtp(userId: string, phone: string): Promise<Date> {
+  async createRegistrationOtp(userId: string, email: string): Promise<Date> {
     const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
     const expiresAt = new Date(Date.now() + this.expirySeconds() * 1000);
     const otp = await this.repository.otpVerification.upsert({
@@ -47,7 +47,7 @@ export class OtpService {
       },
     });
 
-    await this.delivery.queueRegistrationOtp(otp.id, phone, code);
+    await this.delivery.sendRegistrationOtp(otp.id, email, code);
     return expiresAt;
   }
 
@@ -126,7 +126,14 @@ export class OtpService {
       });
     }
 
-    const expiresAt = await this.createRegistrationOtp(user.id, user.phone);
+    if (!user.email) {
+      throw new ConflictException({
+        code: ErrorCode.AuthAccountNotVerified,
+        message: 'This account has no email address for verification',
+        details: [],
+      });
+    }
+    const expiresAt = await this.createRegistrationOtp(user.id, user.email);
     await this.audit.record(AuditAction.AUTH_OTP_RESENT, user.id, context);
     return expiresAt;
   }

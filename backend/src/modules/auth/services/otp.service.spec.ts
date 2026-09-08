@@ -10,7 +10,7 @@ describe('OtpService', () => {
     transaction: jest.fn(),
   };
   const password = { hash: jest.fn(), verify: jest.fn() };
-  const delivery = { queueRegistrationOtp: jest.fn() };
+  const delivery = { sendRegistrationOtp: jest.fn() };
   const audit = { record: jest.fn() };
   const config = { getOrThrow: jest.fn().mockReturnValue(5) };
   const service = new OtpService(

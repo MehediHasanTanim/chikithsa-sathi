@@ -32,10 +32,10 @@ export class AuthService {
 
   async register(dto: RegisterDto, context: RequestContext) {
     await this.rateLimit.enforce('otp', this.rateLimitKey(dto.phone, context.ipAddress));
-    const email = dto.email?.toLowerCase();
+    const email = dto.email.toLowerCase();
     const [phoneOwner, emailOwner] = await Promise.all([
       this.repository.user.findUnique({ where: { phone: dto.phone }, select: { id: true } }),
-      email ? this.repository.user.findUnique({ where: { email }, select: { id: true } }) : null,
+      this.repository.user.findUnique({ where: { email }, select: { id: true } }),
     ]);
     if (phoneOwner)
       throw this.conflict(ErrorCode.AuthPhoneAlreadyExists, 'Phone number is already registered');
@@ -63,7 +63,7 @@ export class AuthService {
       throw error;
     }
 
-    const expiresAt = await this.otp.createRegistrationOtp(user.id, user.phone);
+    const expiresAt = await this.otp.createRegistrationOtp(user.id, email);
     await this.audit.record(AuditAction.AUTH_REGISTERED, user.id, context);
     return { userId: user.id, verificationRequired: true, otpExpiresAt: expiresAt.toISOString() };
   }

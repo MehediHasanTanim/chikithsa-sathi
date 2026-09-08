@@ -53,8 +53,13 @@ export const configuration = (environment: Environment) => ({
     maxRetries: environment.AI_MAX_RETRIES,
   },
   email: {
-    provider: environment.EMAIL_PROVIDER,
+    enabled: environment.EMAIL_ENABLED,
     from: environment.EMAIL_FROM,
+    smtpHost: environment.EMAIL_SMTP_HOST,
+    smtpPort: environment.EMAIL_SMTP_PORT,
+    smtpUser: environment.EMAIL_SMTP_USER,
+    smtpPassword: environment.EMAIL_SMTP_PASSWORD,
+    smtpSecure: environment.EMAIL_SMTP_SECURE,
   },
   sms: {
     provider: environment.SMS_PROVIDER,

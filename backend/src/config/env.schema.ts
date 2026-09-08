@@ -59,11 +59,16 @@ export const environmentSchema = z.object({
   AI_BASE_URL: optionalUrl,
   AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).optional().default(15000),
   AI_MAX_RETRIES: z.coerce.number().int().min(0).max(3).optional().default(1),
-  EMAIL_PROVIDER: optionalString,
+  EMAIL_ENABLED: booleanFromEnvironment.optional().default('false'),
   EMAIL_FROM: z.preprocess(
     (value) => (value === '' ? undefined : value),
     z.string().email().optional(),
   ),
+  EMAIL_SMTP_HOST: optionalString,
+  EMAIL_SMTP_PORT: z.coerce.number().int().min(1).max(65535).optional(),
+  EMAIL_SMTP_USER: optionalString,
+  EMAIL_SMTP_PASSWORD: optionalString,
+  EMAIL_SMTP_SECURE: booleanFromEnvironment.optional().default('false'),
   SMS_PROVIDER: optionalString,
   SMS_API_KEY: optionalString,
   NOTIFICATIONS_ENABLED: booleanFromEnvironment.optional().default('false'),
@@ -100,6 +105,23 @@ export function validateEnvironment(config: Record<string, unknown>): Environmen
     parsed.data.CORS_ORIGINS?.split(',').some((origin) => !origin.trim().startsWith('https://'))
   ) {
     throw new Error('Invalid environment configuration: production CORS origins must use HTTPS');
+  }
+
+  if (parsed.data.NODE_ENV === 'production' && !parsed.data.EMAIL_ENABLED) {
+    throw new Error('Invalid environment configuration: production email delivery must be enabled');
+  }
+
+  if (
+    parsed.data.EMAIL_ENABLED &&
+    (!parsed.data.EMAIL_FROM ||
+      !parsed.data.EMAIL_SMTP_HOST ||
+      !parsed.data.EMAIL_SMTP_PORT ||
+      !parsed.data.EMAIL_SMTP_USER ||
+      !parsed.data.EMAIL_SMTP_PASSWORD)
+  ) {
+    throw new Error(
+      'Invalid environment configuration: enabled email delivery requires EMAIL_FROM and SMTP host, port, user, and password',
+    );
   }
 
   return {

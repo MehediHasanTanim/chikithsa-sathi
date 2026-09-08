@@ -47,7 +47,11 @@ describe('AuthService', () => {
 
   it('creates a pending account and an OTP challenge', async () => {
     prisma.user.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
-    prisma.user.create.mockResolvedValue({ id: 'user-1', phone: '+8801712345678' });
+    prisma.user.create.mockResolvedValue({
+      id: 'user-1',
+      phone: '+8801712345678',
+      email: 'doctor@example.test',
+    });
     password.hash.mockResolvedValue('argon-hash');
     otp.createRegistrationOtp.mockResolvedValue(new Date('2026-09-06T10:00:00.000Z'));
 
@@ -55,6 +59,7 @@ describe('AuthService', () => {
       service.register(
         {
           phone: '+8801712345678',
+          email: 'doctor@example.test',
           password: 'StrongPassword123!',
           fullName: 'Dr Rahman',
           preferredLanguage: 'bn',
@@ -63,7 +68,7 @@ describe('AuthService', () => {
       ),
     ).resolves.toMatchObject({ userId: 'user-1', verificationRequired: true });
     expect(password.hash).toHaveBeenCalledWith('StrongPassword123!');
-    expect(otp.createRegistrationOtp).toHaveBeenCalledWith('user-1', '+8801712345678');
+    expect(otp.createRegistrationOtp).toHaveBeenCalledWith('user-1', 'doctor@example.test');
   });
 
   it('rejects invalid credentials and increments brute-force state', async () => {

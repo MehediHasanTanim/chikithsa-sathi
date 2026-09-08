@@ -1,4 +1,5 @@
 # Chamber Management
+
 ## Document 10 — Complete API Contract
 
 **Product:** AI-Powered Chamber & Prescription Management  
@@ -98,11 +99,11 @@ https://api.<production-domain>/api/v1
 
 Use standard HTTP methods:
 
-| Method | Purpose |
-|---|---|
-| GET | Retrieve |
-| POST | Create/action |
-| PATCH | Partial update |
+| Method | Purpose                           |
+| ------ | --------------------------------- |
+| GET    | Retrieve                          |
+| POST   | Create/action                     |
+| PATCH  | Partial update                    |
 | DELETE | Delete/deactivate where permitted |
 
 Clinical records should generally use action/versioning endpoints instead of destructive DELETE operations.
@@ -223,18 +224,18 @@ Action:
 
 # 9. Standard HTTP Error Mapping
 
-| HTTP | Meaning |
-|---:|---|
-| 400 | Bad request |
-| 401 | Authentication required/invalid |
-| 403 | Permission denied |
-| 404 | Resource not found |
-| 409 | Conflict |
-| 422 | Validation/business rule failure |
-| 429 | Rate limit |
-| 500 | Internal server error |
-| 502 | External provider failure |
-| 503 | Service unavailable |
+| HTTP | Meaning                          |
+| ---: | -------------------------------- |
+|  400 | Bad request                      |
+|  401 | Authentication required/invalid  |
+|  403 | Permission denied                |
+|  404 | Resource not found               |
+|  409 | Conflict                         |
+|  422 | Validation/business rule failure |
+|  429 | Rate limit                       |
+|  500 | Internal server error            |
+|  502 | External provider failure        |
+|  503 | Service unavailable              |
 
 ---
 
@@ -341,7 +342,7 @@ Public.
 phone: required
 password: minimum configured length
 fullName: required
-email: optional
+email: required; receives the verification OTP
 preferredLanguage: bn | en
 ```
 
@@ -596,10 +597,7 @@ Doctor.
     "fullName": "Dr. Rahman",
     "specialization": "Medicine",
     "bmdcNumber": "A-12345",
-    "qualifications": [
-      "MBBS",
-      "FCPS"
-    ]
+    "qualifications": ["MBBS", "FCPS"]
   }
 }
 ```
@@ -2419,24 +2417,24 @@ UNDER_REVIEW
 
 # 178. Authorization Matrix
 
-| Feature | Doctor | Assistant | Receptionist | Manager | Billing |
-|---|---:|---:|---:|---:|---:|
-| Chamber settings | ✓ | ✗ | ✗ | ✓ | ✗ |
-| Staff management | ✓ | ✗ | ✗ | ✓ | ✗ |
-| Patient create | ✓ | ✓ | ✓ | ✓ | Optional |
-| Patient read | ✓ | ✓ | ✓ | ✓ | Limited |
-| Appointment | ✓ | ✓ | ✓ | ✓ | ✗ |
-| Queue | ✓ | ✓ | ✓ | ✓ | ✗ |
-| Clinical notes | ✓ | ✓ | ✗ | Limited | ✗ |
-| Vitals | ✓ | ✓ | ✗ | ✗ | ✗ |
-| Diagnosis | ✓ | ✓ | ✗ | ✗ | ✗ |
-| Prescription create | ✓ | ✓ | ✗ | ✗ | ✗ |
-| Prescription finalize | ✓ | Configurable | ✗ | ✗ | ✗ |
-| Payment | ✓ | Optional | Optional | ✓ | ✓ |
-| Refund | ✓ | ✗ | ✗ | Configurable | ✓ |
-| AI clinical | ✓ | ✓ | ✗ | ✗ | ✗ |
-| Analytics | ✓ | Limited | Limited | ✓ | ✓ |
-| Audit | ✓ | Limited | ✗ | ✓ | ✗ |
+| Feature               | Doctor |    Assistant | Receptionist |      Manager |  Billing |
+| --------------------- | -----: | -----------: | -----------: | -----------: | -------: |
+| Chamber settings      |      ✓ |            ✗ |            ✗ |            ✓ |        ✗ |
+| Staff management      |      ✓ |            ✗ |            ✗ |            ✓ |        ✗ |
+| Patient create        |      ✓ |            ✓ |            ✓ |            ✓ | Optional |
+| Patient read          |      ✓ |            ✓ |            ✓ |            ✓ |  Limited |
+| Appointment           |      ✓ |            ✓ |            ✓ |            ✓ |        ✗ |
+| Queue                 |      ✓ |            ✓ |            ✓ |            ✓ |        ✗ |
+| Clinical notes        |      ✓ |            ✓ |            ✗ |      Limited |        ✗ |
+| Vitals                |      ✓ |            ✓ |            ✗ |            ✗ |        ✗ |
+| Diagnosis             |      ✓ |            ✓ |            ✗ |            ✗ |        ✗ |
+| Prescription create   |      ✓ |            ✓ |            ✗ |            ✗ |        ✗ |
+| Prescription finalize |      ✓ | Configurable |            ✗ |            ✗ |        ✗ |
+| Payment               |      ✓ |     Optional |     Optional |            ✓ |        ✓ |
+| Refund                |      ✓ |            ✗ |            ✗ | Configurable |        ✓ |
+| AI clinical           |      ✓ |            ✓ |            ✗ |            ✗ |        ✗ |
+| Analytics             |      ✓ |      Limited |      Limited |            ✓ |        ✓ |
+| Audit                 |      ✓ |      Limited |            ✗ |            ✓ |        ✗ |
 
 Actual permissions should be implemented using permission codes rather than hard-coded role checks.
 

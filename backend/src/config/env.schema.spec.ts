@@ -42,6 +42,12 @@ describe('environment validation', () => {
       NODE_ENV: 'production',
       JWT_ACCESS_SECRET: 'a'.repeat(64),
       JWT_REFRESH_SECRET: 'b'.repeat(64),
+      EMAIL_ENABLED: 'true',
+      EMAIL_FROM: 'no-reply@example.test',
+      EMAIL_SMTP_HOST: 'smtp.example.test',
+      EMAIL_SMTP_PORT: '587',
+      EMAIL_SMTP_USER: 'smtp-user',
+      EMAIL_SMTP_PASSWORD: 'smtp-password',
     };
     const production = validateEnvironment(productionEnvironment);
     const optedIn = validateEnvironment({
@@ -71,5 +77,19 @@ describe('environment validation', () => {
         CORS_ORIGINS: 'http://app.example.test',
       }),
     ).toThrow('production CORS origins');
+  });
+
+  it('requires configured SMTP delivery whenever email OTPs are enabled', () => {
+    expect(() => validateEnvironment({ ...requiredEnvironment, EMAIL_ENABLED: 'true' })).toThrow(
+      'enabled email delivery requires',
+    );
+    expect(() =>
+      validateEnvironment({
+        ...requiredEnvironment,
+        NODE_ENV: 'production',
+        JWT_ACCESS_SECRET: 'a'.repeat(64),
+        JWT_REFRESH_SECRET: 'b'.repeat(64),
+      }),
+    ).toThrow('production email delivery must be enabled');
   });
 });

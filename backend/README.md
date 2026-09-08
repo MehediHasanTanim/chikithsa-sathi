@@ -99,21 +99,21 @@ Apply migrations through the one-shot `migrate` service before starting the API.
 
 All product routes are versioned under `/api/v1`.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| POST | `/auth/register` | Creates a pending account and OTP challenge. |
-| POST | `/auth/verify-otp` | Activates the account after a valid OTP. |
-| POST | `/auth/resend-otp` | Replaces an unconsumed OTP after its cooldown. |
-| POST | `/auth/login` | Creates a device-aware session and returns token pair. |
-| POST | `/auth/refresh` | Rotates the refresh token and invalidates its predecessor. |
-| POST | `/auth/logout` | Requires an access token and revokes its session. |
-| GET/PATCH | `/users/me` | Reads or updates the authenticated user profile. |
+| Method    | Path               | Purpose                                                    |
+| --------- | ------------------ | ---------------------------------------------------------- |
+| POST      | `/auth/register`   | Creates a pending account and OTP challenge.               |
+| POST      | `/auth/verify-otp` | Activates the account after a valid OTP.                   |
+| POST      | `/auth/resend-otp` | Replaces an unconsumed OTP after its cooldown.             |
+| POST      | `/auth/login`      | Creates a device-aware session and returns token pair.     |
+| POST      | `/auth/refresh`    | Rotates the refresh token and invalidates its predecessor. |
+| POST      | `/auth/logout`     | Requires an access token and revokes its session.          |
+| GET/PATCH | `/users/me`        | Reads or updates the authenticated user profile.           |
 
 Passwords and OTPs are Argon2id hashes; raw values are never persisted or logged. Refresh tokens are also stored only as hashes. JWT payloads contain only the user ID, session ID, token version, and token type. Set distinct high-entropy JWT secrets before deploying; development-only values in `.env.example` are rejected in production.
 
 Login is limited to five requests per minute per phone/IP pair. Registration, OTP verification, and OTP resend are limited to five requests per ten minutes; registration OTPs expire after ten minutes, permit five attempts, and resends have a 60-second cooldown. An account is locked for 15 minutes after five failed password attempts. These values are configured through `.env`.
 
-The current `OtpDeliveryService` is a safe queue boundary: it receives the raw code only in memory and logs only the OTP record ID. Connect its implementation to the Sprint 3+ SMS/worker provider before enabling real user sign-up delivery.
+Registration requires an email address. Set `EMAIL_ENABLED=true`, `EMAIL_FROM`, and the `EMAIL_SMTP_*` variables for a TLS-capable SMTP relay. The service verifies SMTP connectivity at startup, sends a six-digit OTP email on registration/resend, and logs neither OTP codes nor recipient addresses. Production startup rejects disabled or incomplete email configuration.
 
 ## Quality hooks
 
