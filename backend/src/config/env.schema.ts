@@ -25,6 +25,14 @@ export const environmentSchema = z.object({
   ENABLE_SWAGGER: booleanFromEnvironment.optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'log', 'debug', 'verbose']).default('log'),
   TIMEZONE: z.string().default('Asia/Dhaka'),
+  CORS_ORIGINS: optionalString,
+  TRUST_PROXY: booleanFromEnvironment.optional().default('false'),
+  API_RATE_LIMIT_MAX: z.coerce.number().int().min(10).max(10_000).default(120),
+  API_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().min(1).max(3600).default(60),
+  METRICS_TOKEN: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(32).optional(),
+  ),
   JWT_ACCESS_SECRET: z.preprocess(
     (value) => (value === '' ? undefined : value),
     z.string().min(32),
@@ -78,9 +86,20 @@ export function validateEnvironment(config: Record<string, unknown>): Environmen
   if (
     parsed.data.NODE_ENV === 'production' &&
     (parsed.data.JWT_ACCESS_SECRET.startsWith('development-only-') ||
-      parsed.data.JWT_REFRESH_SECRET.startsWith('development-only-'))
+      parsed.data.JWT_REFRESH_SECRET.startsWith('development-only-') ||
+      parsed.data.JWT_ACCESS_SECRET.length < 64 ||
+      parsed.data.JWT_REFRESH_SECRET.length < 64)
   ) {
-    throw new Error('Invalid environment configuration: production JWT secrets must be replaced');
+    throw new Error(
+      'Invalid environment configuration: production JWT secrets must be unique and at least 64 characters',
+    );
+  }
+
+  if (
+    parsed.data.NODE_ENV === 'production' &&
+    parsed.data.CORS_ORIGINS?.split(',').some((origin) => !origin.trim().startsWith('https://'))
+  ) {
+    throw new Error('Invalid environment configuration: production CORS origins must use HTTPS');
   }
 
   return {

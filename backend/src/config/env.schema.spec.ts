@@ -40,8 +40,8 @@ describe('environment validation', () => {
     const productionEnvironment = {
       ...requiredEnvironment,
       NODE_ENV: 'production',
-      JWT_ACCESS_SECRET: 'production-access-secret-that-is-long-enough',
-      JWT_REFRESH_SECRET: 'production-refresh-secret-that-is-long-enough',
+      JWT_ACCESS_SECRET: 'a'.repeat(64),
+      JWT_REFRESH_SECRET: 'b'.repeat(64),
     };
     const production = validateEnvironment(productionEnvironment);
     const optedIn = validateEnvironment({
@@ -51,5 +51,25 @@ describe('environment validation', () => {
 
     expect(production.ENABLE_SWAGGER).toBe(false);
     expect(optedIn.ENABLE_SWAGGER).toBe(true);
+  });
+
+  it('rejects short production secrets and insecure configured CORS origins', () => {
+    expect(() =>
+      validateEnvironment({
+        ...requiredEnvironment,
+        NODE_ENV: 'production',
+        JWT_ACCESS_SECRET: 'a'.repeat(63),
+        JWT_REFRESH_SECRET: 'b'.repeat(64),
+      }),
+    ).toThrow('production JWT secrets');
+    expect(() =>
+      validateEnvironment({
+        ...requiredEnvironment,
+        NODE_ENV: 'production',
+        JWT_ACCESS_SECRET: 'a'.repeat(64),
+        JWT_REFRESH_SECRET: 'b'.repeat(64),
+        CORS_ORIGINS: 'http://app.example.test',
+      }),
+    ).toThrow('production CORS origins');
   });
 });

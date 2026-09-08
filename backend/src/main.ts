@@ -14,13 +14,21 @@ import { getOrCreateRequestId, REQUEST_ID_HEADER } from '@common/middleware/requ
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ logger: false }),
+    new FastifyAdapter({ logger: false, trustProxy: process.env.TRUST_PROXY === 'true' }),
     { bufferLogs: true },
   );
   const config = app.get(ConfigService);
 
   app.enableShutdownHooks();
   await app.register(helmet);
+  const corsOrigins = config.getOrThrow<string[]>('app.corsOrigins');
+  if (corsOrigins.length > 0) {
+    app.enableCors({
+      origin: corsOrigins,
+      credentials: true,
+      methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
+    });
+  }
   const fastify = app.getHttpAdapter().getInstance();
   fastify.addHook('onRequest', (request, reply, done) => {
     request.requestId = getOrCreateRequestId(request);

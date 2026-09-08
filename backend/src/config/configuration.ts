@@ -9,6 +9,14 @@ export const configuration = (environment: Environment) => ({
     enableSwagger: environment.ENABLE_SWAGGER,
     logLevel: environment.LOG_LEVEL,
     timezone: environment.TIMEZONE,
+    corsOrigins:
+      environment.CORS_ORIGINS?.split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean) ?? [],
+    trustProxy: environment.TRUST_PROXY,
+    apiRateLimitMax: environment.API_RATE_LIMIT_MAX,
+    apiRateLimitWindowSeconds: environment.API_RATE_LIMIT_WINDOW_SECONDS,
+    metricsToken: environment.METRICS_TOKEN,
   },
   database: {
     url: environment.DATABASE_URL,

@@ -7,6 +7,7 @@ export const ErrorCode = {
   Conflict: 'CONFLICT',
   Internal: 'INTERNAL_SERVER_ERROR',
   ServiceUnavailable: 'SERVICE_UNAVAILABLE',
+  RateLimited: 'RATE_LIMITED',
   DatabaseUnavailable: 'DATABASE_UNAVAILABLE',
   CacheUnavailable: 'CACHE_UNAVAILABLE',
   AuthInvalidCredentials: 'AUTH_INVALID_CREDENTIALS',

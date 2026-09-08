@@ -13,6 +13,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       lazyConnect: true,
       maxRetriesPerRequest: 1,
       enableReadyCheck: true,
+      retryStrategy: (attempt) => Math.min(2_000, Math.max(100, attempt * 100)),
     });
   }
 

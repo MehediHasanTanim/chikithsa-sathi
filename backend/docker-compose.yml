@@ -16,6 +16,11 @@ x-api-environment: &api-environment
   ENABLE_SWAGGER: ${ENABLE_SWAGGER:-false}
   LOG_LEVEL: ${LOG_LEVEL:-log}
   TIMEZONE: ${TIMEZONE:-Asia/Dhaka}
+  CORS_ORIGINS: ${CORS_ORIGINS:-}
+  TRUST_PROXY: ${TRUST_PROXY:-false}
+  API_RATE_LIMIT_MAX: ${API_RATE_LIMIT_MAX:-120}
+  API_RATE_LIMIT_WINDOW_SECONDS: ${API_RATE_LIMIT_WINDOW_SECONDS:-60}
+  METRICS_TOKEN: ${METRICS_TOKEN:-}
   JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-development-only-access-secret-replace-before-production}
   JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-development-only-refresh-secret-replace-before-production}
   JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}

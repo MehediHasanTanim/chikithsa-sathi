@@ -6,6 +6,7 @@ import { AIRequestStatus, UserStatus } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { ErrorCode } from '@common/constants/error-codes';
 import { HttpExceptionFilter } from '@common/filters/http-exception.filter';
+import { RequestRateLimitGuard } from '@common/guards/request-rate-limit.guard';
 import { ResponseInterceptor } from '@common/interceptors/response.interceptor';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { AuthRateLimitService } from '@modules/auth/services/auth-rate-limit.service';
@@ -80,6 +81,8 @@ describeInfrastructure('Doctor chamber workflow (infrastructure e2e)', () => {
       .useValue(provider)
       .overrideProvider(AuthRateLimitService)
       .useValue({ enforce: jest.fn().mockResolvedValue(undefined) })
+      .overrideProvider(RequestRateLimitGuard)
+      .useValue({ canActivate: jest.fn(() => true) })
       .overrideProvider(NotificationQueueService)
       .useValue(notificationQueue)
       .overrideProvider(NotificationWorkerService)

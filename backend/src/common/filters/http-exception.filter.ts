@@ -24,7 +24,14 @@ export class HttpExceptionFilter extends BaseExceptionFilter {
 
     if (normalized.status >= 500) {
       this.logger.error(
-        `${request.method} ${request.url} failed with ${normalized.status}`,
+        JSON.stringify({
+          event: 'http.request_failed',
+          requestId: request.requestId,
+          method: request.method,
+          path: request.url?.split('?')[0] ?? '/',
+          status: normalized.status,
+          code: normalized.code,
+        }),
         exception instanceof Error ? exception.stack : undefined,
       );
     }

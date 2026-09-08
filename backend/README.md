@@ -67,6 +67,25 @@ curl -i http://localhost:3000/health/live
 
 `npm run test:e2e` uses dependency doubles so it is fast and reliable in any local environment. To manually verify real infrastructure, run Docker Compose and call `/health/ready`; `DATABASE_URL_TEST` is reserved for Sprint 1 integration tests as the database test suite grows.
 
+## Production hardening
+
+Production startup rejects development or short JWT secrets. Configure distinct 64+ character access and refresh secrets through your secret manager; never use `.env` files as a production secret store. Swagger is disabled unless explicitly enabled. If `CORS_ORIGINS` is configured, every production origin must use HTTPS.
+
+All non-health HTTP routes have a Redis-backed per-IP limit (`API_RATE_LIMIT_MAX` requests per `API_RATE_LIMIT_WINDOW_SECONDS`). Authentication has stricter independent limits. Health probes are deliberately excluded so orchestration remains reliable during client traffic spikes.
+
+Set `METRICS_TOKEN` to expose Prometheus metrics at `GET /api/metrics`; send it as `Authorization: Bearer <token>`. Without this secret the endpoint returns 404. Metrics aggregate route templates, status codes, and latency only—never request bodies, query strings, patient IDs, or tokens.
+
+Before a production deployment, run:
+
+```bash
+npm run audit:prod
+npm run lint
+npm run build
+npm run test:infra
+```
+
+Apply migrations through the one-shot `migrate` service before starting the API. Roll back application images only when the migration is backward compatible; otherwise deploy a forward corrective migration. Validate disaster recovery in a separate environment by restoring a tested PostgreSQL backup, applying the image/migrations, checking Redis recovery, then verifying an authorized file download.
+
 ## Conventions introduced in Sprint 1
 
 - API success: `{ success, data, meta: { requestId } }`
