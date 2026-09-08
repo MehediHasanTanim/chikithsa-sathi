@@ -6,10 +6,10 @@ import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { AIClinicalFeaturesService } from './ai-clinical-features.service';
 import { AIOrchestratorService } from './ai-orchestrator.service';
-import type { CreateAIPrescriptionDraftDto } from './dto/create-ai-prescription-draft.dto';
-import type { CreateAIRequestDto } from './dto/create-ai-request.dto';
-import type { CreateClinicalChatDto } from './dto/create-clinical-chat.dto';
-import type { CreatePatientSummaryDto } from './dto/create-patient-summary.dto';
+import { CreateAIPrescriptionDraftDto } from './dto/create-ai-prescription-draft.dto';
+import { CreateAIRequestDto } from './dto/create-ai-request.dto';
+import { CreateClinicalChatDto } from './dto/create-clinical-chat.dto';
+import { CreatePatientSummaryDto } from './dto/create-patient-summary.dto';
 
 @ApiTags('AI')
 @ApiBearerAuth()
