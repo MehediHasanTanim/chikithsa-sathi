@@ -6,3 +6,5 @@ coverage/
 !.env.example
 *.log
 .DS_Store
+docker/prometheus/metrics-token
+docker/alertmanager/alert-webhook-url

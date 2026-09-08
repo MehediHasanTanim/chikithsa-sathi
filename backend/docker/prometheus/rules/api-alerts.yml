@@ -1,0 +1,35 @@
+groups:
+  - name: chamber-api
+    rules:
+      - alert: ChamberApiTargetDown
+        expr: up{job="chamber-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Chamber API metrics target is unreachable
+          description: Prometheus has been unable to scrape the Chamber API for at least two minutes.
+
+      - alert: ChamberApiHighErrorRate
+        expr: |
+          sum(rate(cm_http_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(cm_http_requests_total[5m])), 0.001) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Chamber API 5xx error rate exceeds 5%
+          description: More than 5% of API responses have been 5xx for at least ten minutes.
+
+      - alert: ChamberApiHighLatency
+        expr: |
+          sum(rate(cm_http_request_duration_milliseconds_sum[5m]))
+          /
+          clamp_min(sum(rate(cm_http_request_duration_milliseconds_count[5m])), 0.001) > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Chamber API average request latency exceeds one second
+          description: Average API response time has exceeded 1000ms for at least ten minutes.

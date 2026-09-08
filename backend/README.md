@@ -75,6 +75,28 @@ All non-health HTTP routes have a Redis-backed per-IP limit (`API_RATE_LIMIT_MAX
 
 Set `METRICS_TOKEN` to expose Prometheus metrics at `GET /api/metrics`; send it as `Authorization: Bearer <token>`. Without this secret the endpoint returns 404. Metrics aggregate route templates, status codes, and latency only—never request bodies, query strings, patient IDs, or tokens.
 
+### Prometheus and alerting
+
+The optional Compose `observability` profile runs Prometheus and Alertmanager. Prometheus is bound to loopback only, scrapes the API over the internal Docker network, and reads the bearer token from a Docker secret rather than its configuration. Alertmanager requires an HTTPS webhook URL for your incident-management or notification service.
+
+Before enabling the profile, create a high-entropy token, store the same value in `.env` as `METRICS_TOKEN`, and put it in the ignored secret file. Also place the HTTPS Alertmanager-compatible webhook URL in its ignored secret file:
+
+```bash
+umask 077
+openssl rand -hex 32 > docker/prometheus/metrics-token
+printf '%s' 'https://alerts.example.com/alertmanager/webhook' > docker/alertmanager/alert-webhook-url
+# Copy the file's value into METRICS_TOKEN in your secret manager or local .env.
+```
+
+Then start the stack:
+
+```bash
+docker compose --profile observability up --build -d
+curl -fsS http://127.0.0.1:9090/api/v1/targets
+```
+
+Prometheus evaluates target-down, 5xx-rate, and latency alerts. Alertmanager sends both firing and resolved events to the configured webhook. In managed production, use the equivalent platform secrets for the metrics token and webhook URL; do not publish ports 9090 or 9093 to the public internet.
+
 Before a production deployment, run:
 
 ```bash

@@ -116,9 +116,58 @@ services:
     networks:
       - chamber_network
 
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    restart: unless-stopped
+    profiles: ['observability']
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle=false'
+    ports:
+      - '127.0.0.1:${PROMETHEUS_PORT:-9090}:9090'
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    secrets:
+      - metrics_token
+    depends_on:
+      api:
+        condition: service_healthy
+      alertmanager:
+        condition: service_started
+    networks:
+      - chamber_network
+
+  alertmanager:
+    build:
+      context: ./docker/alertmanager
+    image: chamber-management-alertmanager:local
+    restart: unless-stopped
+    profiles: ['observability']
+    environment:
+      ALERT_WEBHOOK_URL_FILE: /run/secrets/alert_webhook_url
+    ports:
+      - '127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093'
+    volumes:
+      - alertmanager_data:/alertmanager
+    secrets:
+      - alert_webhook_url
+    networks:
+      - chamber_network
+
 volumes:
   postgres_data:
   redis_data:
+  prometheus_data:
+  alertmanager_data:
+
+secrets:
+  metrics_token:
+    file: ./docker/prometheus/metrics-token
+  alert_webhook_url:
+    file: ./docker/alertmanager/alert-webhook-url
 
 networks:
   chamber_network:
