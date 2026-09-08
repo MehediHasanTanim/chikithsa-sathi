@@ -85,4 +85,11 @@ export class AppointmentsController {
   confirm(@CurrentUser() user: AuthenticatedUser, @Param('appointmentId') appointmentId: string) {
     return this.appointments.confirm(user, appointmentId);
   }
+
+  @Post(':appointmentId/no-show')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Mark a booked or confirmed appointment as no-show' })
+  noShow(@CurrentUser() user: AuthenticatedUser, @Param('appointmentId') appointmentId: string) {
+    return this.appointments.noShow(user, appointmentId);
+  }
 }

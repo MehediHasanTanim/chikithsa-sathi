@@ -215,4 +215,37 @@ export class NotificationsService {
       where: { chamberId, status: { in: [NotificationStatus.PENDING, NotificationStatus.FAILED] } },
     });
   }
+
+  async inbox(userId: string, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const where = { recipientUserId: userId };
+    const [items, total, unread] = await Promise.all([
+      this.repository.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: { id: true, chamberId: true, type: true, channel: true, status: true, payload: true, createdAt: true, readAt: true },
+      }),
+      this.repository.notification.count({ where }),
+      this.repository.notification.count({ where: { ...where, readAt: null } }),
+    ]);
+    return { items, unread, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  }
+
+  async markRead(userId: string, notificationId: string) {
+    const updated = await this.repository.notification.updateMany({
+      where: { id: notificationId, recipientUserId: userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    return { read: updated.count === 1 };
+  }
+
+  async markAllRead(userId: string) {
+    const updated = await this.repository.notification.updateMany({
+      where: { recipientUserId: userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    return { read: updated.count };
+  }
 }

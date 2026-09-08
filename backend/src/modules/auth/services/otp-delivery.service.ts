@@ -1,97 +1,78 @@
-import {
-  Inject,
-  Injectable,
-  Logger,
-  OnModuleInit,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createTransport, type Transporter } from 'nodemailer';
+import { createTransport } from 'nodemailer';
+import { OtpDeliveryChannel } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
 
-export const OTP_EMAIL_TRANSPORT = Symbol('OTP_EMAIL_TRANSPORT');
-
-export function createOtpEmailTransport(config: ConfigService): Transporter | null {
-  if (!config.getOrThrow<boolean>('email.enabled')) return null;
-
-  return createTransport({
-    host: config.getOrThrow<string>('email.smtpHost'),
-    port: config.getOrThrow<number>('email.smtpPort'),
-    secure: config.getOrThrow<boolean>('email.smtpSecure'),
-    requireTLS: !config.getOrThrow<boolean>('email.smtpSecure'),
-    auth: {
-      user: config.getOrThrow<string>('email.smtpUser'),
-      pass: config.getOrThrow<string>('email.smtpPassword'),
-    },
-    tls: { minVersion: 'TLSv1.2' },
-  });
-}
-
-/** SMTP-backed registration OTP delivery. OTP values exist only in memory and are never logged. */
+/** Delivers OTPs only through the registered channel selected for the challenge. */
 @Injectable()
-export class OtpDeliveryService implements OnModuleInit {
+export class OtpDeliveryService {
   private readonly logger = new Logger(OtpDeliveryService.name);
 
-  constructor(
-    private readonly config: ConfigService,
-    @Inject(OTP_EMAIL_TRANSPORT) private readonly transport: Transporter | null,
-  ) {}
+  constructor(private readonly config: ConfigService) {}
 
-  async onModuleInit(): Promise<void> {
-    if (!this.transport) {
-      this.logger.warn({ event: 'auth.otp_email_delivery_disabled' });
+  async sendOtp(
+    otpId: string,
+    destination: { phone: string; email?: string },
+    code: string,
+    purpose: 'verification' | 'password reset',
+    channel: OtpDeliveryChannel,
+  ): Promise<void> {
+    if (channel === OtpDeliveryChannel.EMAIL) return this.sendEmail(otpId, destination.email, code, purpose);
+    return this.sendSms(otpId, destination.phone, code, purpose);
+  }
+
+  private async sendSms(otpId: string, phone: string, code: string, purpose: 'verification' | 'password reset'): Promise<void> {
+    if (!this.config.getOrThrow<boolean>('sms.enabled')) {
+      this.logger.warn({ event: 'auth.otp_sms_delivery_disabled', otpId });
+      if (this.config.getOrThrow<string>('app.environment') === 'production') throw this.unavailable();
       return;
     }
 
+    const accountSid = this.config.getOrThrow<string>('sms.twilioAccountSid');
+    const authToken = this.config.getOrThrow<string>('sms.twilioAuthToken');
+    const from = this.config.getOrThrow<string>('sms.twilioFrom');
+    const body = `${this.config.getOrThrow<string>('app.name')}: your ${purpose} code is ${code}. It expires in ${this.config.getOrThrow<number>('jwt.otpExpirySeconds') / 60} minutes.`;
+    const credentials = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+
     try {
-      await this.transport.verify();
-      this.logger.log({ event: 'auth.otp_email_transport_verified' });
+      const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+        method: 'POST',
+        headers: { Authorization: `Basic ${credentials}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ To: phone, From: from, Body: body }).toString(),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) throw new Error(`Twilio response ${response.status}`);
+      this.logger.log({ event: 'auth.otp_sms_sent', otpId });
     } catch (error) {
-      this.logFailure('auth.otp_email_transport_unavailable', undefined, error);
+      this.logger.error({ event: 'auth.otp_sms_delivery_failed', otpId, errorType: error instanceof Error ? error.name : 'UnknownSmsError' });
       throw this.unavailable();
     }
   }
 
-  async sendRegistrationOtp(otpId: string, email: string, code: string): Promise<void> {
-    if (!this.transport) {
-      this.logger.warn({ event: 'auth.otp_email_delivery_disabled', otpId });
-      return;
-    }
-
+  private async sendEmail(otpId: string, email: string | undefined, code: string, purpose: 'verification' | 'password reset'): Promise<void> {
+    if (!email) throw this.unavailable('No email address is registered for this account');
+    if (!this.config.getOrThrow<boolean>('email.enabled')) throw this.unavailable('Email OTP delivery is not configured');
+    const transport = createTransport({
+      host: this.config.getOrThrow<string>('email.smtpHost'), port: this.config.getOrThrow<number>('email.smtpPort'),
+      secure: this.config.getOrThrow<boolean>('email.smtpSecure'), requireTLS: !this.config.getOrThrow<boolean>('email.smtpSecure'),
+      auth: { user: this.config.getOrThrow<string>('email.smtpUser'), pass: this.config.getOrThrow<string>('email.smtpPassword') }, tls: { minVersion: 'TLSv1.2' },
+    });
     try {
-      await this.transport.sendMail({
-        from: this.config.getOrThrow<string>('email.from'),
-        to: email,
-        subject: `${this.config.getOrThrow<string>('app.name')} verification code`,
-        text: [
-          `Your verification code is ${code}.`,
-          '',
-          `It expires in ${this.config.getOrThrow<number>('jwt.otpExpirySeconds') / 60} minutes.`,
-          'If you did not request this, you can safely ignore this email.',
-        ].join('\n'),
+      await transport.sendMail({
+        from: this.config.getOrThrow<string>('email.from'), to: email,
+        subject: `${this.config.getOrThrow<string>('app.name')} ${purpose} code`,
+        text: `Your ${purpose} code is ${code}. It expires in ${this.config.getOrThrow<number>('jwt.otpExpirySeconds') / 60} minutes.`,
       });
       this.logger.log({ event: 'auth.otp_email_sent', otpId });
     } catch (error) {
-      this.logFailure('auth.otp_email_delivery_failed', otpId, error);
+      this.logger.error({ event: 'auth.otp_email_delivery_failed', otpId, errorType: error instanceof Error ? error.name : 'UnknownSmtpError' });
       throw this.unavailable();
     }
   }
 
-  private logFailure(event: string, otpId: string | undefined, error: unknown): void {
-    this.logger.error({
-      event,
-      ...(otpId ? { otpId } : {}),
-      // SMTP errors may echo recipient addresses or message content. Keep logs metadata-only.
-      errorType: error instanceof Error ? error.name : 'UnknownSmtpError',
-    });
-  }
-
-  private unavailable(): ServiceUnavailableException {
-    return new ServiceUnavailableException({
-      code: ErrorCode.ServiceUnavailable,
-      message: 'Verification email delivery is temporarily unavailable',
-      details: [],
-    });
+  private unavailable(message = 'OTP delivery is temporarily unavailable'): ServiceUnavailableException {
+    return new ServiceUnavailableException({ code: ErrorCode.ServiceUnavailable, message, details: [] });
   }
 }

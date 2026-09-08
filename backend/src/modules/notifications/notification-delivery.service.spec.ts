@@ -4,7 +4,8 @@ import { NotificationDeliveryService } from './notification-delivery.service';
 
 describe('NotificationDeliveryService', () => {
   const prisma = { notification: { findUnique: jest.fn(), update: jest.fn() } };
-  const service = new NotificationDeliveryService(prisma as never);
+  const config = { get: jest.fn(), getOrThrow: jest.fn() };
+  const service = new NotificationDeliveryService(prisma as never, config as never);
 
   beforeEach(() => jest.resetAllMocks());
 
@@ -14,7 +15,11 @@ describe('NotificationDeliveryService', () => {
       type: 'PAYMENT_RECEIPT',
       channel: NotificationChannel.SMS,
       status: NotificationStatus.PENDING,
+      recipientPhone: '+8801712345678',
     });
+    config.get.mockImplementation((key: string) => key === 'sms.enabled');
+    config.getOrThrow.mockImplementation((key: string) => ({ 'app.name': 'Chamber', 'sms.twilioAccountSid': 'sid', 'sms.twilioAuthToken': 'token', 'sms.twilioFrom': '+15005550006' })[key]);
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response('{}', { status: 201 }));
 
     await service.deliver('notification-1');
 

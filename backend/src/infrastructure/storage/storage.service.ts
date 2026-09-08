@@ -76,6 +76,11 @@ export class StorageService {
     return { url, expiresAt: this.expiry() };
   }
 
+  async putGeneratedObject(key: string, contentType: string, body: Uint8Array): Promise<void> {
+    if (!this.client) return;
+    await this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: contentType, Body: body }));
+  }
+
   /**
    * Reads object metadata from storage rather than accepting completion details
    * from the browser. A malware scanner must tag clean objects with

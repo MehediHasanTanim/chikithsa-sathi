@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Appointment, AppointmentStatus, Prisma } from '@prisma/client';
+import { Appointment, AppointmentStatus, AppointmentType, Prisma } from '@prisma/client';
 import { randomInt } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
@@ -40,7 +40,7 @@ export type PublicAppointment = {
   updatedAt: Date;
 };
 
-type ChamberContext = { id: string; ownerDoctorId: string; timezone: string };
+type ChamberContext = { id: string; ownerDoctorId: string; timezone: string; emergencyDailyCapacity: number };
 type AppointmentTransactionClient = Pick<
   Prisma.TransactionClient,
   'appointment' | 'schedule' | '$queryRaw'
@@ -187,10 +187,18 @@ export class AppointmentsService {
     return this.toPublic(updated);
   }
 
+  async noShow(user: AuthenticatedUser, appointmentId: string): Promise<PublicAppointment> {
+    const appointment = await this.findAppointment(appointmentId);
+    await this.permissions.requirePermissions(user.id, appointment.chamberId, ['appointments.update']);
+    const updated = await this.repository.appointment.updateMany({ where: { id: appointment.id, status: { in: [AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED] } }, data: { status: AppointmentStatus.NO_SHOW } });
+    if (updated.count !== 1) throw this.invalid('Only booked or confirmed appointments can be marked no-show');
+    return this.toPublic(await this.findAppointment(appointment.id));
+  }
+
   private async findChamber(chamberId: string): Promise<ChamberContext> {
     const chamber = await this.repository.chamber.findUnique({
       where: { id: chamberId },
-      select: { id: true, ownerDoctorId: true, timezone: true },
+      select: { id: true, ownerDoctorId: true, timezone: true, emergencyDailyCapacity: true },
     });
     if (!chamber) throw this.notFound(ErrorCode.AppointmentNotFound, 'Chamber was not found');
     return chamber;
@@ -218,7 +226,14 @@ export class AppointmentsService {
     chamber: ChamberContext,
     scheduledAt: Date,
     excludeAppointmentId?: string,
+    type: AppointmentType = AppointmentType.ROUTINE,
   ): Promise<void> {
+    const scheduledDate = this.toScheduledDate(chamber, scheduledAt);
+    if (type === AppointmentType.EMERGENCY) {
+      const emergencies = await db.appointment.count({ where: { chamberId: chamber.id, scheduledDate, type: AppointmentType.EMERGENCY, status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW] }, ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}) } });
+      if (emergencies >= chamber.emergencyDailyCapacity) throw this.invalid('Emergency appointment capacity has been reached');
+      return;
+    }
     const parts = this.chamberTimeParts(scheduledAt, chamber.timezone);
     const hhmm = `${this.pad(parts.hours)}:${this.pad(parts.minutes)}`;
 
@@ -246,7 +261,6 @@ export class AppointmentsService {
       throw this.invalid('Appointment time does not align with the schedule slot duration');
     }
 
-    const scheduledDate = this.toScheduledDate(chamber, scheduledAt);
     if (schedule.maxPatients) {
       const booked = await db.appointment.count({
         where: {
@@ -291,7 +305,7 @@ export class AppointmentsService {
         const appointmentCode = this.generateAppointmentCode();
         return await this.repository.transaction(
           async (tx) => {
-            await this.validateSlot(tx, chamber, scheduledAt);
+            await this.validateSlot(tx, chamber, scheduledAt, undefined, dto.type);
             return tx.appointment.create({
               data: {
                 appointmentCode,
@@ -350,7 +364,7 @@ export class AppointmentsService {
               throw this.invalid('This appointment can no longer be rescheduled');
             }
 
-            await this.validateSlot(tx, chamber, scheduledAt, appointment.id);
+            await this.validateSlot(tx, chamber, scheduledAt, appointment.id, appointment.type);
             return tx.appointment.update({
               where: { id: appointment.id },
               data: {

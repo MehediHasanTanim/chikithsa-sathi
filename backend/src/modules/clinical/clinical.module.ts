@@ -11,6 +11,8 @@ import { InvestigationsController } from './investigations.controller';
 import { InvestigationsService } from './investigations.service';
 import { VitalsController } from './vitals.controller';
 import { VitalsService } from './vitals.service';
+import { ClinicalHistoryService } from './clinical-history.service';
+import { ClinicalHistoryController } from './clinical-history.controller';
 
 @Module({
   imports: [AuthModule, PermissionsModule],
@@ -19,6 +21,7 @@ import { VitalsService } from './vitals.service';
     ClinicalNotesController,
     DiagnosesController,
     InvestigationsController,
+    ClinicalHistoryController,
   ],
   providers: [
     ClinicalAccessService,
@@ -26,6 +29,7 @@ import { VitalsService } from './vitals.service';
     ClinicalNotesService,
     DiagnosesService,
     InvestigationsService,
+    ClinicalHistoryService,
   ],
   exports: [ClinicalAccessService, VitalsService, ClinicalNotesService],
 })

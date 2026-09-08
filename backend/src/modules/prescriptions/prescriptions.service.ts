@@ -11,8 +11,11 @@ import {
   Prescription,
   PrescriptionItem,
   PrescriptionStatus,
+  FileCategory,
+  FileStatus,
 } from '@prisma/client';
 import { randomInt } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
 import { DatabaseRepository, Repository } from '@database/database.repository';
@@ -24,6 +27,9 @@ import type { FinalizePrescriptionDto } from './dto/finalize-prescription.dto';
 import type { ReviewPrescriptionDto } from './dto/review-prescription.dto';
 import type { UpdatePrescriptionDto } from './dto/update-prescription.dto';
 import { PrescriptionEventsService } from './prescription-events.service';
+import { StorageService } from '@infrastructure/storage/storage.service';
+import { AppointmentsService } from '@modules/appointments/appointments.service';
+import type { CreateFollowUpDto } from './dto/create-follow-up.dto';
 
 type PrescriptionWithItems = Prescription & {
   items: Array<PrescriptionItem & { medicine: Medicine | null }>;
@@ -79,6 +85,8 @@ export class PrescriptionsService {
     @Repository() private readonly repository: DatabaseRepository,
     private readonly permissions: PermissionsService,
     private readonly events: PrescriptionEventsService,
+    private readonly storage: StorageService,
+    private readonly appointments: AppointmentsService,
   ) {}
 
   async create(
@@ -352,10 +360,7 @@ export class PrescriptionsService {
   async pdf(
     user: AuthenticatedUser,
     prescriptionId: string,
-  ): Promise<{
-    status: string;
-    prescriptionId: string;
-  }> {
+  ): Promise<{ status: string; prescriptionId: string; fileId: string; downloadUrl: string; expiresAt: string }> {
     const prescription = await this.findPrescription(prescriptionId);
     await this.permissions.requirePermissions(user.id, prescription.chamberId, ['encounters.read']);
     if (
@@ -365,8 +370,47 @@ export class PrescriptionsService {
       throw this.invalid('A PDF is only available for finalized prescriptions');
     }
 
+    if (prescription.pdfFileId) {
+      const file = await this.repository.fileObject.findUnique({ where: { id: prescription.pdfFileId } });
+      if (file?.status === FileStatus.AVAILABLE) {
+        const signed = await this.storage.createDownloadUrl(file.storageKey);
+        return { status: 'READY', prescriptionId, fileId: file.id, downloadUrl: signed.url, expiresAt: signed.expiresAt.toISOString() };
+      }
+    }
+    const document = this.renderPdf(prescription);
+    const key = `prescriptions/${prescription.chamberId}/${prescription.id}/${randomUUID()}.pdf`;
+    await this.storage.putGeneratedObject(key, 'application/pdf', document);
+    const file = await this.repository.transaction(async (tx) => {
+      const created = await tx.fileObject.create({ data: { storageKey: key, originalName: `${prescription.prescriptionNumber}.pdf`, mimeType: 'application/pdf', sizeBytes: BigInt(document.byteLength), checksum: createHash('sha256').update(document).digest('hex'), category: FileCategory.PRESCRIPTION_ATTACHMENT, status: FileStatus.AVAILABLE } });
+      await tx.prescription.update({ where: { id: prescription.id }, data: { pdfFileId: created.id } });
+      return created;
+    });
     this.events.pdfRequested(prescriptionId);
-    return { status: 'PROCESSING', prescriptionId: prescription.id };
+    const signed = await this.storage.createDownloadUrl(key);
+    return { status: 'READY', prescriptionId, fileId: file.id, downloadUrl: signed.url, expiresAt: signed.expiresAt.toISOString() };
+  }
+
+  async createFollowUp(user: AuthenticatedUser, prescriptionId: string, dto: CreateFollowUpDto) {
+    const prescription = await this.findPrescription(prescriptionId);
+    await this.permissions.requirePermissions(user.id, prescription.chamberId, ['appointments.create']);
+    return this.appointments.create(user, { chamberId: prescription.chamberId, patientId: prescription.patientId, scheduledAt: dto.scheduledAt, type: 'FOLLOW_UP', reason: `Follow-up for ${prescription.prescriptionNumber}` });
+  }
+
+  private renderPdf(prescription: PrescriptionWithItems): Buffer {
+    const escape = (value: string) => value.replace(/[\\()]/g, '\\$&').replace(/[\r\n]+/g, ' ');
+    const lines = [
+      `Prescription ${prescription.prescriptionNumber}`,
+      `Date: ${prescription.createdAt.toISOString().slice(0, 10)}`,
+      ...(prescription.clinicalSummary ? [`Summary: ${prescription.clinicalSummary}`] : []),
+      ...prescription.items.map((item) => `${item.medicineName ?? 'Medicine'} ${item.strength ?? ''} ${item.dosage ?? ''} ${item.frequencyText ?? item.frequency ?? ''}`.trim()),
+      ...(prescription.advice ? [`Advice: ${prescription.advice}`] : []),
+    ].slice(0, 40);
+    const content = ['BT', '/F1 11 Tf', '50 780 Td', ...lines.flatMap((line, index) => [`(${escape(line)}) Tj`, ...(index < lines.length - 1 ? ['0 -18 Td'] : [])]), 'ET'].join('\n');
+    const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>', `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+    let pdf = '%PDF-1.4\n'; const offsets = [0];
+    objects.forEach((object, i) => { offsets.push(Buffer.byteLength(pdf)); pdf += `${i + 1} 0 obj\n${object}\nendobj\n`; });
+    const xref = Buffer.byteLength(pdf); pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${offset.toString().padStart(10, '0')} 00000 n `).join('\n')}\ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    return Buffer.from(pdf, 'utf8');
   }
 
   private async createWithRetry(

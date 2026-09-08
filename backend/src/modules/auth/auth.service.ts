@@ -32,10 +32,12 @@ export class AuthService {
 
   async register(dto: RegisterDto, context: RequestContext) {
     await this.rateLimit.enforce('otp', this.rateLimitKey(dto.phone, context.ipAddress));
-    const email = dto.email.toLowerCase();
+    const email = dto.email?.toLowerCase();
     const [phoneOwner, emailOwner] = await Promise.all([
       this.repository.user.findUnique({ where: { phone: dto.phone }, select: { id: true } }),
-      this.repository.user.findUnique({ where: { email }, select: { id: true } }),
+      email
+        ? this.repository.user.findUnique({ where: { email }, select: { id: true } })
+        : Promise.resolve(null),
     ]);
     if (phoneOwner)
       throw this.conflict(ErrorCode.AuthPhoneAlreadyExists, 'Phone number is already registered');
@@ -63,7 +65,12 @@ export class AuthService {
       throw error;
     }
 
-    const expiresAt = await this.otp.createRegistrationOtp(user.id, email);
+    const expiresAt = await this.otp.createRegistrationOtp(
+      user.id,
+      user.phone,
+      user.email ?? undefined,
+      dto.otpChannel === 'email' ? 'EMAIL' : 'SMS',
+    );
     await this.audit.record(AuditAction.AUTH_REGISTERED, user.id, context);
     return { userId: user.id, verificationRequired: true, otpExpiresAt: expiresAt.toISOString() };
   }
@@ -74,10 +81,42 @@ export class AuthService {
     return { verified: true };
   }
 
-  async resendOtp(phone: string, context: RequestContext) {
+  async resendOtp(phone: string, context: RequestContext, otpChannel?: 'sms' | 'email') {
     await this.rateLimit.enforce('otp', this.rateLimitKey(phone, context.ipAddress));
-    const expiresAt = await this.otp.resendRegistrationOtp(phone, context);
+    const expiresAt = await this.otp.resendRegistrationOtp(phone, context, otpChannel);
     return { otpExpiresAt: expiresAt.toISOString() };
+  }
+
+  async onboarding(user: AuthenticatedUser) {
+    const [account, doctor, memberships] = await Promise.all([
+      this.repository.user.findUnique({ where: { id: user.id }, select: { status: true, email: true } }),
+      this.repository.doctorProfile.findUnique({ where: { userId: user.id }, select: { verification: { select: { status: true } } } }),
+      this.repository.chamberMembership.count({ where: { userId: user.id, status: 'ACTIVE' } }),
+    ]);
+    return {
+      accountVerified: account?.status === UserStatus.ACTIVE,
+      emailProvided: Boolean(account?.email),
+      professionalVerification: doctor?.verification?.status ?? null,
+      chambersJoined: memberships,
+      complete: account?.status === UserStatus.ACTIVE && memberships > 0,
+    };
+  }
+
+  async requestPasswordReset(phone: string, context: RequestContext, otpChannel: 'sms' | 'email' = 'sms') {
+    await this.rateLimit.enforce('otp', this.rateLimitKey(phone, context.ipAddress));
+    const expiresAt = await this.otp.requestPasswordReset(phone, context, otpChannel);
+    return { accepted: true, otpExpiresAt: expiresAt.toISOString() };
+  }
+
+  async confirmPasswordReset(phone: string, otp: string, password: string, context: RequestContext) {
+    await this.rateLimit.enforce('otp', this.rateLimitKey(phone, context.ipAddress));
+    const userId = await this.otp.consumePasswordResetOtp(phone, otp);
+    await this.repository.transaction(async (tx) => {
+      await tx.user.update({ where: { id: userId }, data: { passwordHash: await this.password.hash(password), failedLoginAttempts: 0, lockedUntil: null } });
+      await tx.userSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date(), tokenVersion: { increment: 1 } } });
+    });
+    await this.audit.record(AuditAction.AUTH_PASSWORD_RESET_COMPLETED, userId, context);
+    return { reset: true };
   }
 
   async login(dto: LoginDto, context: RequestContext) {

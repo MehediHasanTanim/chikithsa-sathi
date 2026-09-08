@@ -1,6 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import {
   IsEmail,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -90,6 +91,16 @@ export class CreateChamberDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   consultationFee?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  followUpFee?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  emergencyDailyCapacity?: number;
 
   @IsOptional()
   @IsString()

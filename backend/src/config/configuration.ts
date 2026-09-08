@@ -62,10 +62,15 @@ export const configuration = (environment: Environment) => ({
     smtpSecure: environment.EMAIL_SMTP_SECURE,
   },
   sms: {
+    enabled: environment.SMS_ENABLED,
     provider: environment.SMS_PROVIDER,
-    apiKey: environment.SMS_API_KEY,
+    twilioAccountSid: environment.SMS_TWILIO_ACCOUNT_SID,
+    twilioAuthToken: environment.SMS_TWILIO_AUTH_TOKEN,
+    twilioFrom: environment.SMS_TWILIO_FROM,
   },
   notifications: {
     enabled: environment.NOTIFICATIONS_ENABLED,
+    pushEnabled: environment.PUSH_ENABLED,
+    pushWebhookUrl: environment.PUSH_WEBHOOK_URL,
   },
 });

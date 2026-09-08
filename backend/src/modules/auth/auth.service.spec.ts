@@ -68,7 +68,12 @@ describe('AuthService', () => {
       ),
     ).resolves.toMatchObject({ userId: 'user-1', verificationRequired: true });
     expect(password.hash).toHaveBeenCalledWith('StrongPassword123!');
-    expect(otp.createRegistrationOtp).toHaveBeenCalledWith('user-1', 'doctor@example.test');
+    expect(otp.createRegistrationOtp).toHaveBeenCalledWith(
+      'user-1',
+      '+8801712345678',
+      'doctor@example.test',
+      'SMS',
+    );
   });
 
   it('rejects invalid credentials and increments brute-force state', async () => {

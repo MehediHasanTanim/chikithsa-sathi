@@ -69,9 +69,14 @@ export const environmentSchema = z.object({
   EMAIL_SMTP_USER: optionalString,
   EMAIL_SMTP_PASSWORD: optionalString,
   EMAIL_SMTP_SECURE: booleanFromEnvironment.optional().default('false'),
-  SMS_PROVIDER: optionalString,
-  SMS_API_KEY: optionalString,
+  SMS_ENABLED: booleanFromEnvironment.optional().default('false'),
+  SMS_PROVIDER: z.preprocess((value) => (value === '' ? undefined : value), z.enum(['twilio']).optional()),
+  SMS_TWILIO_ACCOUNT_SID: optionalString,
+  SMS_TWILIO_AUTH_TOKEN: optionalString,
+  SMS_TWILIO_FROM: optionalString,
   NOTIFICATIONS_ENABLED: booleanFromEnvironment.optional().default('false'),
+  PUSH_ENABLED: booleanFromEnvironment.optional().default('false'),
+  PUSH_WEBHOOK_URL: optionalUrl,
 });
 
 export type Environment = Omit<z.infer<typeof environmentSchema>, 'ENABLE_SWAGGER'> & {
@@ -107,8 +112,8 @@ export function validateEnvironment(config: Record<string, unknown>): Environmen
     throw new Error('Invalid environment configuration: production CORS origins must use HTTPS');
   }
 
-  if (parsed.data.NODE_ENV === 'production' && !parsed.data.EMAIL_ENABLED) {
-    throw new Error('Invalid environment configuration: production email delivery must be enabled');
+  if (parsed.data.NODE_ENV === 'production' && !parsed.data.SMS_ENABLED) {
+    throw new Error('Invalid environment configuration: production SMS OTP delivery must be enabled');
   }
 
   if (
@@ -121,6 +126,18 @@ export function validateEnvironment(config: Record<string, unknown>): Environmen
   ) {
     throw new Error(
       'Invalid environment configuration: enabled email delivery requires EMAIL_FROM and SMTP host, port, user, and password',
+    );
+  }
+
+  if (
+    parsed.data.SMS_ENABLED &&
+    (!parsed.data.SMS_PROVIDER ||
+      !parsed.data.SMS_TWILIO_ACCOUNT_SID ||
+      !parsed.data.SMS_TWILIO_AUTH_TOKEN ||
+      !parsed.data.SMS_TWILIO_FROM)
+  ) {
+    throw new Error(
+      'Invalid environment configuration: enabled SMS delivery requires Twilio provider, account SID, auth token, and sender number',
     );
   }
 

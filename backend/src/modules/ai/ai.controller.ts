@@ -10,6 +10,7 @@ import { CreateAIPrescriptionDraftDto } from './dto/create-ai-prescription-draft
 import { CreateAIRequestDto } from './dto/create-ai-request.dto';
 import { CreateClinicalChatDto } from './dto/create-clinical-chat.dto';
 import { CreatePatientSummaryDto } from './dto/create-patient-summary.dto';
+import { CreateReportSummaryDto } from './dto/create-report-summary.dto';
 
 @ApiTags('AI')
 @ApiBearerAuth()
@@ -31,6 +32,12 @@ export class AIController {
   @ApiOperation({ summary: 'Generate a structured, review-required patient summary' })
   patientSummary(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreatePatientSummaryDto) {
     return this.clinical.patientSummary(user, dto);
+  }
+
+  @Post('report-summary')
+  @ApiOperation({ summary: 'Generate a review-required summary of a structured diagnostic report' })
+  reportSummary(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateReportSummaryDto) {
+    return this.clinical.reportSummary(user, dto);
   }
 
   @Post('clinical-chat')

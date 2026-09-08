@@ -18,12 +18,20 @@ enum UserStatus {
 
 enum OtpPurpose {
   REGISTRATION
+  PASSWORD_RESET
+}
+
+enum OtpDeliveryChannel {
+  SMS
+  EMAIL
 }
 
 enum AuditAction {
   AUTH_REGISTERED
   AUTH_OTP_VERIFIED
   AUTH_OTP_RESENT
+  AUTH_PASSWORD_RESET_REQUESTED
+  AUTH_PASSWORD_RESET_COMPLETED
   AUTH_LOGIN
   AUTH_REFRESHED
   AUTH_LOGOUT
@@ -120,17 +128,18 @@ model UserSession {
 }
 
 model OtpVerification {
-  id          String     @id @default(uuid()) @db.Uuid
-  userId      String     @db.Uuid
+  id          String             @id @default(uuid()) @db.Uuid
+  userId      String             @db.Uuid
   purpose     OtpPurpose
+  channel     OtpDeliveryChannel @default(SMS)
   codeHash    String
   expiresAt   DateTime
-  attempts    Int        @default(0)
+  attempts    Int                @default(0)
   maxAttempts Int
   consumedAt  DateTime?
-  lastSentAt  DateTime   @default(now())
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  lastSentAt  DateTime           @default(now())
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -169,6 +178,7 @@ model Notification {
   payload         Json
   scheduledAt     DateTime            @default(now())
   sentAt          DateTime?
+  readAt          DateTime?
   failedAt        DateTime?
   attemptCount    Int                 @default(0)
   lastError       String?             @db.Text
@@ -180,6 +190,7 @@ model Notification {
 
   @@index([chamberId, createdAt])
   @@index([recipientUserId, createdAt])
+  @@index([recipientUserId, readAt, createdAt])
   @@index([status, scheduledAt])
   @@index([type, createdAt])
 }
@@ -240,16 +251,17 @@ model DoctorProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user                 User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  verification         ProfessionalVerification?
-  chambersOwned        Chamber[]                 @relation("ChamberOwner")
-  chamberMemberships   ChamberMembership[]
-  schedules            Schedule[]
-  appointments         Appointment[]
-  queueEntries         QueueEntry[]
-  encounters           Encounter[]
-  createdPrescriptions Prescription[]            @relation("PrescriptionDoctor")
-  favoriteMedicines    DoctorMedicineFavorite[]
+  user                  User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verification          ProfessionalVerification?
+  chambersOwned         Chamber[]                 @relation("ChamberOwner")
+  chamberMemberships    ChamberMembership[]
+  schedules             Schedule[]
+  appointments          Appointment[]
+  queueEntries          QueueEntry[]
+  encounters            Encounter[]
+  createdPrescriptions  Prescription[]            @relation("PrescriptionDoctor")
+  prescriptionTemplates PrescriptionTemplate[]
+  favoriteMedicines     DoctorMedicineFavorite[]
 
   @@index([specialization])
   @@index([bmdcNumber])
@@ -306,28 +318,31 @@ model Chamber {
   phone String? @db.VarChar(30)
   email String? @db.VarChar(255)
 
-  status          ChamberStatus @default(ACTIVE)
-  defaultCurrency String        @default("BDT") @db.VarChar(10)
-  timezone        String        @default("Asia/Dhaka") @db.VarChar(100)
-  consultationFee Decimal?      @db.Decimal(12, 2)
+  status                 ChamberStatus @default(ACTIVE)
+  defaultCurrency        String        @default("BDT") @db.VarChar(10)
+  timezone               String        @default("Asia/Dhaka") @db.VarChar(100)
+  consultationFee        Decimal?      @db.Decimal(12, 2)
+  followUpFee            Decimal?      @db.Decimal(12, 2)
+  emergencyDailyCapacity Int           @default(2)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  owner         DoctorProfile       @relation("ChamberOwner", fields: [ownerDoctorId], references: [id])
-  memberships   ChamberMembership[]
-  schedules     Schedule[]
-  patients      PatientChamber[]
-  appointments  Appointment[]
-  queueEntries  QueueEntry[]
-  queueCounters DailyQueueCounter[]
-  encounters    Encounter[]
-  prescriptions Prescription[]
-  payments      Payment[]
-  aiRequests    AIRequest[]
-  aiDrafts      AIDraft[]
-  notifications Notification[]
+  owner                 DoctorProfile          @relation("ChamberOwner", fields: [ownerDoctorId], references: [id])
+  memberships           ChamberMembership[]
+  schedules             Schedule[]
+  patients              PatientChamber[]
+  appointments          Appointment[]
+  queueEntries          QueueEntry[]
+  queueCounters         DailyQueueCounter[]
+  encounters            Encounter[]
+  prescriptions         Prescription[]
+  prescriptionTemplates PrescriptionTemplate[]
+  payments              Payment[]
+  aiRequests            AIRequest[]
+  aiDrafts              AIDraft[]
+  notifications         Notification[]
 
   @@index([ownerDoctorId])
   @@index([status])
@@ -773,8 +788,9 @@ model Medicine {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  favorites         DoctorMedicineFavorite[]
-  prescriptionItems PrescriptionItem[]
+  favorites                 DoctorMedicineFavorite[]
+  prescriptionItems         PrescriptionItem[]
+  prescriptionTemplateItems PrescriptionTemplateItem[]
 
   @@index([genericName])
   @@index([genericNameBangla])
@@ -812,6 +828,7 @@ model Prescription {
   followUpDate       DateTime?
   aiGenerated        Boolean            @default(false)
   aiRequestId        String?            @unique @db.Uuid
+  pdfFileId          String?            @unique @db.Uuid
   reviewedAt         DateTime?
   reviewedById       String?            @db.Uuid
   finalizedAt        DateTime?
@@ -827,6 +844,7 @@ model Prescription {
   doctor    DoctorProfile @relation("PrescriptionDoctor", fields: [doctorId], references: [id], onDelete: Cascade)
   encounter Encounter     @relation(fields: [encounterId], references: [id], onDelete: Cascade)
   aiRequest AIRequest?    @relation("AIPrescriptionRequest", fields: [aiRequestId], references: [id], onDelete: SetNull)
+  pdfFile   FileObject?   @relation("PrescriptionPdf", fields: [pdfFileId], references: [id], onDelete: SetNull)
 
   items      PrescriptionItem[]
   amendments PrescriptionAmendment[]
@@ -835,6 +853,48 @@ model Prescription {
   @@index([doctorId, createdAt])
   @@index([encounterId])
   @@index([status])
+}
+
+model PrescriptionTemplate {
+  id              String   @id @default(uuid()) @db.Uuid
+  doctorId        String   @db.Uuid
+  chamberId       String?  @db.Uuid
+  name            String   @db.VarChar(150)
+  clinicalSummary String?  @db.Text
+  advice          String?  @db.Text
+  followUpDays    Int?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  doctor  DoctorProfile              @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  chamber Chamber?                   @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+  items   PrescriptionTemplateItem[]
+
+  @@index([doctorId, chamberId, isActive])
+}
+
+model PrescriptionTemplateItem {
+  id            String               @id @default(uuid()) @db.Uuid
+  templateId    String               @db.Uuid
+  medicineId    String?              @db.Uuid
+  itemType      PrescriptionItemType @default(MEDICINE)
+  medicineName  String?              @db.VarChar(255)
+  strength      String?              @db.VarChar(100)
+  dosageForm    String?              @db.VarChar(100)
+  dosage        String?              @db.VarChar(100)
+  frequency     MedicineFrequency?
+  frequencyText String?              @db.VarChar(255)
+  durationDays  Int?
+  durationText  String?              @db.VarChar(255)
+  instruction   String?              @db.Text
+  sortOrder     Int                  @default(0)
+  createdAt     DateTime             @default(now())
+
+  template PrescriptionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  medicine Medicine?            @relation(fields: [medicineId], references: [id], onDelete: SetNull)
+
+  @@index([templateId, sortOrder])
 }
 
 model PrescriptionItem {
@@ -1045,6 +1105,7 @@ model FileObject {
   diagnosticReports     DiagnosticReportFile[]
   receipts              Receipt[]
   verificationDocuments VerificationDocument[]
+  prescriptionPdfs      Prescription[]         @relation("PrescriptionPdf")
   uploadedBy            User?                  @relation("FileUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
 
   @@index([category, status])
@@ -1127,10 +1188,13 @@ model Payment {
   encounterId   String? @db.Uuid
   appointmentId String? @db.Uuid
 
-  amount   Decimal       @db.Decimal(12, 2)
-  currency String        @default("BDT") @db.VarChar(10)
-  method   PaymentMethod
-  status   PaymentStatus @default(PAID)
+  amount         Decimal       @db.Decimal(12, 2)
+  feeAmount      Decimal?      @db.Decimal(12, 2)
+  discountAmount Decimal       @default(0) @db.Decimal(12, 2)
+  dueAmount      Decimal       @default(0) @db.Decimal(12, 2)
+  currency       String        @default("BDT") @db.VarChar(10)
+  method         PaymentMethod
+  status         PaymentStatus @default(PAID)
 
   transactionReference String? @db.VarChar(100)
   idempotencyKey       String? @db.VarChar(100)

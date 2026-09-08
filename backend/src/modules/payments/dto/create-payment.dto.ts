@@ -23,6 +23,17 @@ export class CreatePaymentDto {
   @Min(0.01)
   amount!: number;
 
+  /** Gross service fee. When omitted, the chamber's consultation/follow-up fee is used. */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  feeAmount?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  discountAmount?: number;
+
   @IsOptional()
   @IsString()
   @MaxLength(10)

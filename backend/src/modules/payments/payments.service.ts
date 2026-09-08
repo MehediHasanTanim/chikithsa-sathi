@@ -30,6 +30,9 @@ export type PublicPayment = {
   encounterId: string | null;
   appointmentId: string | null;
   amount: number;
+  feeAmount: number | null;
+  discountAmount: number;
+  dueAmount: number;
   currency: string;
   method: string;
   status: PaymentStatus;
@@ -80,7 +83,8 @@ export class PaymentsService {
       await this.assertAppointmentBelongs(dto.appointmentId, dto.chamberId, dto.patientId);
     }
 
-    const payment = await this.createWithRetry(user.id, dto, idempotencyKey);
+    const financials = await this.resolveFinancials(dto);
+    const payment = await this.createWithRetry(user.id, dto, financials, idempotencyKey);
     this.events.created(payment.id);
     return this.toPublic(payment);
   }
@@ -281,6 +285,7 @@ export class PaymentsService {
   private async createWithRetry(
     userId: string,
     dto: CreatePaymentDto,
+    financials: { feeAmount: Prisma.Decimal; discountAmount: Prisma.Decimal; dueAmount: Prisma.Decimal },
     idempotencyKey?: string,
   ): Promise<PaymentRecord> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -295,6 +300,9 @@ export class PaymentsService {
             encounterId: dto.encounterId,
             appointmentId: dto.appointmentId,
             amount: new Prisma.Decimal(dto.amount),
+            feeAmount: financials.feeAmount,
+            discountAmount: financials.discountAmount,
+            dueAmount: financials.dueAmount,
             currency: dto.currency ?? 'BDT',
             method: dto.method,
             transactionReference: dto.transactionReference,
@@ -343,6 +351,21 @@ export class PaymentsService {
         details: [],
       });
     }
+  }
+
+  private async resolveFinancials(dto: CreatePaymentDto): Promise<{ feeAmount: Prisma.Decimal; discountAmount: Prisma.Decimal; dueAmount: Prisma.Decimal }> {
+    const [chamber, appointment] = await Promise.all([
+      this.repository.chamber.findUnique({ where: { id: dto.chamberId }, select: { consultationFee: true, followUpFee: true } }),
+      dto.appointmentId
+        ? this.repository.appointment.findUnique({ where: { id: dto.appointmentId }, select: { type: true } })
+        : Promise.resolve(null),
+    ]);
+    const configuredFee = appointment?.type === 'FOLLOW_UP' ? chamber?.followUpFee : chamber?.consultationFee;
+    const feeAmount = new Prisma.Decimal(dto.feeAmount ?? configuredFee ?? dto.amount);
+    const discountAmount = new Prisma.Decimal(dto.discountAmount ?? 0);
+    const net = feeAmount.minus(discountAmount);
+    if (net.lessThan(0) || new Prisma.Decimal(dto.amount).greaterThan(net)) throw this.invalidAmount();
+    return { feeAmount, discountAmount, dueAmount: net.minus(dto.amount) };
   }
 
   private async assertEncounterBelongs(
@@ -450,6 +473,9 @@ export class PaymentsService {
       encounterId: payment.encounterId,
       appointmentId: payment.appointmentId,
       amount: Number(payment.amount),
+      feeAmount: payment.feeAmount ? Number(payment.feeAmount) : null,
+      discountAmount: Number(payment.discountAmount),
+      dueAmount: Number(payment.dueAmount),
       currency: payment.currency,
       method: payment.method,
       status: payment.status,

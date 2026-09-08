@@ -20,6 +20,9 @@ const paymentRecord = {
   encounterId: null,
   appointmentId: null,
   amount: new Prisma.Decimal(1000),
+  feeAmount: new Prisma.Decimal(1000),
+  discountAmount: new Prisma.Decimal(0),
+  dueAmount: new Prisma.Decimal(0),
   currency: 'BDT',
   method: 'CASH',
   status: PaymentStatus.PAID,
@@ -43,6 +46,7 @@ describe('PaymentsService', () => {
   const prisma = {
     payment: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), count: jest.fn() },
     patientChamber: { findUnique: jest.fn() },
+    chamber: { findUnique: jest.fn() },
     encounter: { findUnique: jest.fn() },
     appointment: { findUnique: jest.fn() },
     receipt: { findFirst: jest.fn() },
@@ -59,6 +63,7 @@ describe('PaymentsService', () => {
     );
     tx.payment.findUnique.mockResolvedValue(paymentRecord);
     tx.$queryRaw.mockResolvedValue([{ '?column?': 1 }]);
+    prisma.chamber.findUnique.mockResolvedValue({ consultationFee: new Prisma.Decimal(1000), followUpFee: null });
   });
 
   it('records a payment and issues a receipt', async () => {

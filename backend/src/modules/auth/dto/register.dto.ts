@@ -20,10 +20,11 @@ export class RegisterDto {
   @Transform(({ value }: { value: string }) => normalizeBangladeshPhone(value))
   phone!: string;
 
+  @IsOptional()
   @IsEmail()
   @MaxLength(255)
   @Transform(({ value }: { value: string | undefined }) => value?.trim().toLowerCase())
-  email!: string;
+  email?: string;
 
   @IsString()
   @MinLength(12)
@@ -39,4 +40,8 @@ export class RegisterDto {
   @IsOptional()
   @IsIn(['bn', 'en'])
   preferredLanguage: 'bn' | 'en' = 'bn';
+
+  @IsOptional()
+  @IsIn(['sms', 'email'])
+  otpChannel?: 'sms' | 'email';
 }

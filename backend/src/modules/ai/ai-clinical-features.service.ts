@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PermissionsService } from '@modules/permissions/permissions.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import {
   PrescriptionsService,
   type PublicPrescription,
@@ -16,6 +17,7 @@ import {
 import type { CreateAIPrescriptionDraftDto } from './dto/create-ai-prescription-draft.dto';
 import type { CreateClinicalChatDto } from './dto/create-clinical-chat.dto';
 import type { CreatePatientSummaryDto } from './dto/create-patient-summary.dto';
+import type { CreateReportSummaryDto } from './dto/create-report-summary.dto';
 
 export type AIProvenance = {
   requestId: string;
@@ -60,6 +62,12 @@ const PRESCRIPTION_INSTRUCTION = [
   'Use only supported enum values for itemType, frequency, and durationUnit. Do not include medicineId. Do not diagnose, finalize, or make autonomous decisions.',
 ].join(' ');
 
+const REPORT_SUMMARY_INSTRUCTION = [
+  'Summarize only the supplied clinician-entered diagnostic report text.',
+  'Do not infer results from attached files, diagnose, or make treatment recommendations.',
+  'State uncertainty where fields are missing and require clinician review.',
+].join(' ');
+
 @Injectable()
 export class AIClinicalFeaturesService {
   constructor(
@@ -67,6 +75,7 @@ export class AIClinicalFeaturesService {
     private readonly outputs: AIClinicalOutputService,
     private readonly prescriptions: PrescriptionsService,
     private readonly permissions: PermissionsService,
+    @Repository() private readonly repository: DatabaseRepository,
   ) {}
 
   async patientSummary(
@@ -156,6 +165,21 @@ export class AIClinicalFeaturesService {
     );
 
     return { prescription, provenance: this.provenance(result) };
+  }
+
+  async reportSummary(user: AuthenticatedUser, dto: CreateReportSummaryDto) {
+    const report = await this.repository.diagnosticReport.findUnique({
+      where: { id: dto.reportId },
+      select: { id: true, patientId: true, encounterId: true, title: true, summary: true, findings: true, interpretation: true, encounter: { select: { chamberId: true } } },
+    });
+    if (!report || report.encounter.chamberId !== dto.chamberId) {
+      throw new NotFoundException('Diagnostic report was not found in this chamber');
+    }
+    await this.permissions.requirePermissions(user.id, dto.chamberId, ['encounters.read']);
+    const structuredText = JSON.stringify({ title: report.title, summary: report.summary, findings: report.findings, interpretation: report.interpretation, focus: dto.focus ?? null });
+    const result = await this.orchestrator.generate(user, { chamberId: dto.chamberId, patientId: report.patientId, encounterId: report.encounterId, feature: 'REPORT_SUMMARY', prompt: `Summarize this structured diagnostic report: ${structuredText}` }, { systemInstruction: REPORT_SUMMARY_INSTRUCTION, maxOutputTokens: 1200 });
+    await this.repository.diagnosticReport.update({ where: { id: report.id }, data: { aiSummary: result.content, aiAnalysis: JSON.stringify({ requestId: result.requestId, model: result.model, generatedAt: new Date().toISOString() }) } });
+    return { summary: result.content, provenance: this.provenance(result) };
   }
 
   private provenance(result: PublicAIResult): AIProvenance {

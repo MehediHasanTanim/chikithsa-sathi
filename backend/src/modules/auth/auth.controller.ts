@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 
@@ -12,6 +12,8 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResendOtpDto } from './dto/resend-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
+import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
 
 @ApiTags('Authentication')
 @Controller({ path: 'auth', version: '1' })
@@ -24,6 +26,12 @@ export class AuthController {
     return this.auth.register(dto, this.context(request));
   }
 
+  @Get('onboarding')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get authenticated user onboarding progress' })
+  onboarding(@CurrentUser() user: AuthenticatedUser) { return this.auth.onboarding(user); }
+
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify a registration OTP' })
@@ -35,7 +43,21 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request a new registration OTP' })
   resendOtp(@Body() dto: ResendOtpDto, @Req() request: FastifyRequest) {
-    return this.auth.resendOtp(dto.phone, this.context(request));
+    return this.auth.resendOtp(dto.phone, this.context(request), dto.otpChannel);
+  }
+
+  @Post('password-reset/request')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Send a password-reset OTP by the selected registered channel' })
+  requestPasswordReset(@Body() dto: RequestPasswordResetDto, @Req() request: FastifyRequest) {
+    return this.auth.requestPasswordReset(dto.phone, this.context(request), dto.otpChannel);
+  }
+
+  @Post('password-reset/confirm')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset a password with a valid mobile OTP' })
+  confirmPasswordReset(@Body() dto: ConfirmPasswordResetDto, @Req() request: FastifyRequest) {
+    return this.auth.confirmPasswordReset(dto.phone, dto.otp, dto.password, this.context(request));
   }
 
   @Post('login')

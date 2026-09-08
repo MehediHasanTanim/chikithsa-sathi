@@ -30,6 +30,8 @@ export type PublicChamber = {
   currency: string;
   timezone: string;
   consultationFee: number | null;
+  followUpFee: number | null;
+  emergencyDailyCapacity: number;
   owner: { id: string; fullName: string };
   createdAt: Date;
   updatedAt: Date;
@@ -85,6 +87,10 @@ export class ChambersService {
         ...(dto.consultationFee !== undefined
           ? { consultationFee: new Prisma.Decimal(dto.consultationFee) }
           : {}),
+        ...(dto.followUpFee !== undefined ? { followUpFee: new Prisma.Decimal(dto.followUpFee) } : {}),
+        ...(dto.emergencyDailyCapacity !== undefined
+          ? { emergencyDailyCapacity: dto.emergencyDailyCapacity }
+          : {}),
         ...(dto.currency !== undefined ? { defaultCurrency: dto.currency } : {}),
         ...(dto.timezone !== undefined ? { timezone: dto.timezone } : {}),
       },
@@ -123,6 +129,8 @@ export class ChambersService {
       currency: chamber.defaultCurrency,
       timezone: chamber.timezone,
       consultationFee: chamber.consultationFee ? Number(chamber.consultationFee) : null,
+      followUpFee: chamber.followUpFee ? Number(chamber.followUpFee) : null,
+      emergencyDailyCapacity: chamber.emergencyDailyCapacity,
       owner: { id: chamber.owner.id, fullName: chamber.owner.fullName },
       createdAt: chamber.createdAt,
       updatedAt: chamber.updatedAt,
@@ -153,6 +161,9 @@ export class ChambersService {
                 dto.consultationFee !== undefined
                   ? new Prisma.Decimal(dto.consultationFee)
                   : undefined,
+              followUpFee:
+                dto.followUpFee !== undefined ? new Prisma.Decimal(dto.followUpFee) : undefined,
+              emergencyDailyCapacity: dto.emergencyDailyCapacity,
               defaultCurrency: dto.currency,
               timezone: dto.timezone,
             },

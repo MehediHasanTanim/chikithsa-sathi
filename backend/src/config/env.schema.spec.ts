@@ -42,12 +42,11 @@ describe('environment validation', () => {
       NODE_ENV: 'production',
       JWT_ACCESS_SECRET: 'a'.repeat(64),
       JWT_REFRESH_SECRET: 'b'.repeat(64),
-      EMAIL_ENABLED: 'true',
-      EMAIL_FROM: 'no-reply@example.test',
-      EMAIL_SMTP_HOST: 'smtp.example.test',
-      EMAIL_SMTP_PORT: '587',
-      EMAIL_SMTP_USER: 'smtp-user',
-      EMAIL_SMTP_PASSWORD: 'smtp-password',
+      SMS_ENABLED: 'true',
+      SMS_PROVIDER: 'twilio',
+      SMS_TWILIO_ACCOUNT_SID: 'AC123',
+      SMS_TWILIO_AUTH_TOKEN: 'secret',
+      SMS_TWILIO_FROM: '+15005550006',
     };
     const production = validateEnvironment(productionEnvironment);
     const optedIn = validateEnvironment({
@@ -79,7 +78,7 @@ describe('environment validation', () => {
     ).toThrow('production CORS origins');
   });
 
-  it('requires configured SMTP delivery whenever email OTPs are enabled', () => {
+  it('requires configured SMS delivery in production', () => {
     expect(() => validateEnvironment({ ...requiredEnvironment, EMAIL_ENABLED: 'true' })).toThrow(
       'enabled email delivery requires',
     );
@@ -90,6 +89,6 @@ describe('environment validation', () => {
         JWT_ACCESS_SECRET: 'a'.repeat(64),
         JWT_REFRESH_SECRET: 'b'.repeat(64),
       }),
-    ).toThrow('production email delivery must be enabled');
+    ).toThrow('production SMS OTP delivery must be enabled');
   });
 });

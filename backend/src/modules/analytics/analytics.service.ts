@@ -157,6 +157,19 @@ export class AnalyticsService {
     };
   }
 
+  async exportCsv(user: AuthenticatedUser, query: AnalyticsRangeQueryDto): Promise<string> {
+    const [revenue, patients] = await Promise.all([this.revenue(user, query), this.patients(user, query)]);
+    const rows = [
+      ['metric', 'value'],
+      ['date_from', revenue.dateFrom], ['date_to', revenue.dateTo],
+      ['payment_count', String(revenue.paymentCount)], ['gross_amount', String(revenue.grossAmount)],
+      ['refunded_amount', String(revenue.refundedAmount)], ['net_amount', String(revenue.netAmount)],
+      ['total_linked_patients', String(patients.totalLinked)], ['newly_linked_patients', String(patients.newlyLinked)],
+      ['unique_patients_seen', String(patients.uniquePatientsSeen)],
+    ];
+    return rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(',')).join('\n');
+  }
+
   private dayRange(date?: string): DateRange {
     return this.range({ dateFrom: date, dateTo: date });
   }

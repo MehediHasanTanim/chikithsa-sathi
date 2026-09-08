@@ -21,4 +21,13 @@ export class CreateReportDto {
   @IsOptional()
   @IsUUID()
   fileId?: string;
+
+  @IsOptional() @IsString() @MaxLength(10000) @Transform(trim)
+  summary?: string;
+
+  @IsOptional() @IsString() @MaxLength(20000) @Transform(trim)
+  findings?: string;
+
+  @IsOptional() @IsString() @MaxLength(20000) @Transform(trim)
+  interpretation?: string;
 }

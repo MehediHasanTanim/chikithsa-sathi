@@ -20,6 +20,7 @@ import { CreatePrescriptionDto } from './dto/create-prescription.dto';
 import { FinalizePrescriptionDto } from './dto/finalize-prescription.dto';
 import { ReviewPrescriptionDto } from './dto/review-prescription.dto';
 import { UpdatePrescriptionDto } from './dto/update-prescription.dto';
+import { CreateFollowUpDto } from './dto/create-follow-up.dto';
 
 @ApiTags('Prescriptions')
 @ApiBearerAuth()
@@ -106,4 +107,8 @@ export class PrescriptionsController {
   pdf(@CurrentUser() user: AuthenticatedUser, @Param('prescriptionId') prescriptionId: string) {
     return this.prescriptions.pdf(user, prescriptionId);
   }
+
+  @Post('prescriptions/:prescriptionId/follow-up')
+  @ApiOperation({ summary: 'Create a follow-up appointment from a prescription' })
+  followUp(@CurrentUser() user: AuthenticatedUser, @Param('prescriptionId') prescriptionId: string, @Body() dto: CreateFollowUpDto) { return this.prescriptions.createFollowUp(user, prescriptionId, dto); }
 }
