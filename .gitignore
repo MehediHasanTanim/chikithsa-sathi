@@ -1,2 +1,5 @@
 # Local UX/design working files
 /ux-design/
+
+# Local environment configuration and secrets
+.env
