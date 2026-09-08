@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Appointment, AppointmentStatus, AppointmentType, Prisma } from '@prisma/client';
+import { Appointment, AppointmentStatus, AppointmentType, AuditAction, Prisma } from '@prisma/client';
 import { randomInt } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
@@ -13,6 +13,7 @@ import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 import { AppointmentEventsService } from './appointment-events.service';
+import { AuditService } from '@modules/auth/services/audit.service';
 import type { AppointmentQueryDto } from './dto/appointment-query.dto';
 import type { CancelAppointmentDto } from './dto/cancel-appointment.dto';
 import type { CreateAppointmentDto } from './dto/create-appointment.dto';
@@ -55,6 +56,7 @@ export class AppointmentsService {
     @Repository() private readonly repository: DatabaseRepository,
     private readonly permissions: PermissionsService,
     private readonly events: AppointmentEventsService,
+    private readonly audit?: AuditService,
   ) {}
 
   async create(user: AuthenticatedUser, dto: CreateAppointmentDto): Promise<PublicAppointment> {
@@ -192,6 +194,7 @@ export class AppointmentsService {
     await this.permissions.requirePermissions(user.id, appointment.chamberId, ['appointments.update']);
     const updated = await this.repository.appointment.updateMany({ where: { id: appointment.id, status: { in: [AppointmentStatus.BOOKED, AppointmentStatus.CONFIRMED] } }, data: { status: AppointmentStatus.NO_SHOW } });
     if (updated.count !== 1) throw this.invalid('Only booked or confirmed appointments can be marked no-show');
+    await this.audit?.recordDomain(AuditAction.APPOINTMENT_NO_SHOW, user.id, 'Appointment', appointment.id, undefined, appointment.chamberId);
     return this.toPublic(await this.findAppointment(appointment.id));
   }
 

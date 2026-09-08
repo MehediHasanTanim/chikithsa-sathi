@@ -33,6 +33,7 @@ const prescriptionRecord = {
 
 describe('PrescriptionsService', () => {
   const tx = {
+    fileObject: { create: jest.fn() },
     prescriptionAmendment: { create: jest.fn() },
     prescription: { update: jest.fn() },
   };
@@ -54,13 +55,23 @@ describe('PrescriptionsService', () => {
     delivered: jest.fn(),
     pdfRequested: jest.fn(),
   };
-  const service = new PrescriptionsService(prisma as never, permissions as never, events as never);
+  const storage = { createDownloadUrl: jest.fn(), putGeneratedObject: jest.fn() };
+  const appointments = { create: jest.fn() };
+  const service = new PrescriptionsService(
+    prisma as never,
+    permissions as never,
+    events as never,
+    storage as never,
+    appointments as never,
+  );
 
   beforeEach(() => {
     jest.resetAllMocks();
     prisma.transaction.mockImplementation(
       async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     );
+    tx.fileObject.create.mockResolvedValue({ id: 'pdf-file-1' });
+    storage.createDownloadUrl.mockResolvedValue({ url: 'https://example.test/prescription.pdf', expiresAt: new Date() });
   });
 
   it('creates a draft prescription with items for an encounter', async () => {
@@ -331,7 +342,7 @@ describe('PrescriptionsService', () => {
 
     const result = await service.pdf(user, 'prescription-1');
 
-    expect(result.status).toBe('PROCESSING');
+    expect(result.status).toBe('READY');
     expect(events.pdfRequested).toHaveBeenCalledWith('prescription-1');
   });
 

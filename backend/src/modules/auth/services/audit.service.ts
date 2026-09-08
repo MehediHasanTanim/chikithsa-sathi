@@ -33,6 +33,7 @@ export class AuditService {
     entityType: string,
     entityId: string,
     metadata?: Prisma.InputJsonValue,
+    chamberId?: string,
   ): Promise<void> {
     await this.repository.auditLog.create({
       data: {
@@ -41,6 +42,7 @@ export class AuditService {
         entityType,
         entityId,
         ...(metadata !== undefined ? { metadata } : {}),
+        ...(chamberId ? { chamberId } : {}),
       },
     });
   }

@@ -2,6 +2,10 @@
 -- reusable prescription templates, and generated prescription artifacts.
 ALTER TYPE "AuditAction" ADD VALUE 'AUTH_PASSWORD_RESET_REQUESTED';
 ALTER TYPE "AuditAction" ADD VALUE 'AUTH_PASSWORD_RESET_COMPLETED';
+ALTER TYPE "AuditAction" ADD VALUE 'APPOINTMENT_NO_SHOW';
+ALTER TYPE "AuditAction" ADD VALUE 'APPOINTMENT_FOLLOW_UP_CREATED';
+ALTER TYPE "AuditAction" ADD VALUE 'NOTIFICATION_READ';
+ALTER TYPE "AuditAction" ADD VALUE 'AUDIT_LOG_EXPORTED';
 ALTER TYPE "OtpPurpose" ADD VALUE 'PASSWORD_RESET';
 CREATE TYPE "OtpDeliveryChannel" AS ENUM ('SMS', 'EMAIL');
 
@@ -13,6 +17,17 @@ ALTER TABLE "Payment"
   ADD COLUMN "feeAmount" DECIMAL(12,2);
 ALTER TABLE "Prescription" ADD COLUMN "pdfFileId" UUID;
 ALTER TABLE "OtpVerification" ADD COLUMN "channel" "OtpDeliveryChannel" NOT NULL DEFAULT 'SMS';
+ALTER TABLE "AuditLog" ADD COLUMN "chamberId" UUID;
+CREATE INDEX "AuditLog_chamberId_createdAt_idx" ON "AuditLog"("chamberId", "createdAt");
+
+-- The application role can append entries only; any mutation or deletion is rejected.
+CREATE OR REPLACE FUNCTION prevent_audit_log_mutation() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'AuditLog is append-only';
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER audit_log_append_only BEFORE UPDATE OR DELETE ON "AuditLog"
+FOR EACH ROW EXECUTE FUNCTION prevent_audit_log_mutation();
 
 CREATE TABLE "PrescriptionTemplate" (
   "id" UUID NOT NULL,

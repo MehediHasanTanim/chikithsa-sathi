@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   EncounterStatus,
+  AuditAction,
   Medicine,
   Prisma,
   Prescription,
@@ -28,6 +29,7 @@ import type { ReviewPrescriptionDto } from './dto/review-prescription.dto';
 import type { UpdatePrescriptionDto } from './dto/update-prescription.dto';
 import { PrescriptionEventsService } from './prescription-events.service';
 import { StorageService } from '@infrastructure/storage/storage.service';
+import { AuditService } from '@modules/auth/services/audit.service';
 import { AppointmentsService } from '@modules/appointments/appointments.service';
 import type { CreateFollowUpDto } from './dto/create-follow-up.dto';
 
@@ -87,6 +89,7 @@ export class PrescriptionsService {
     private readonly events: PrescriptionEventsService,
     private readonly storage: StorageService,
     private readonly appointments: AppointmentsService,
+    private readonly audit?: AuditService,
   ) {}
 
   async create(
@@ -393,7 +396,9 @@ export class PrescriptionsService {
   async createFollowUp(user: AuthenticatedUser, prescriptionId: string, dto: CreateFollowUpDto) {
     const prescription = await this.findPrescription(prescriptionId);
     await this.permissions.requirePermissions(user.id, prescription.chamberId, ['appointments.create']);
-    return this.appointments.create(user, { chamberId: prescription.chamberId, patientId: prescription.patientId, scheduledAt: dto.scheduledAt, type: 'FOLLOW_UP', reason: `Follow-up for ${prescription.prescriptionNumber}` });
+    const appointment = await this.appointments.create(user, { chamberId: prescription.chamberId, patientId: prescription.patientId, scheduledAt: dto.scheduledAt, type: 'FOLLOW_UP', reason: `Follow-up for ${prescription.prescriptionNumber}` });
+    await this.audit?.recordDomain(AuditAction.APPOINTMENT_FOLLOW_UP_CREATED, user.id, 'Appointment', appointment.id, { prescriptionId }, prescription.chamberId);
+    return appointment;
   }
 
   private renderPdf(prescription: PrescriptionWithItems): Buffer {

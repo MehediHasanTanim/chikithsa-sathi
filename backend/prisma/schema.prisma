@@ -54,6 +54,10 @@ enum AuditAction {
   PERMISSIONS_CHANGED
   FILE_UPLOADED
   FILE_AVAILABLE
+  APPOINTMENT_NO_SHOW
+  APPOINTMENT_FOLLOW_UP_CREATED
+  NOTIFICATION_READ
+  AUDIT_LOG_EXPORTED
 }
 
 enum NotificationChannel {
@@ -156,6 +160,7 @@ model AuditLog {
   requestId  String?     @db.VarChar(100)
   ipAddress  String?     @db.VarChar(100)
   userAgent  String?     @db.Text
+  chamberId  String?     @db.Uuid
   metadata   Json?
   createdAt  DateTime    @default(now())
 
@@ -163,6 +168,7 @@ model AuditLog {
 
   @@index([userId, createdAt])
   @@index([action, createdAt])
+  @@index([chamberId, createdAt])
 }
 
 model Notification {
