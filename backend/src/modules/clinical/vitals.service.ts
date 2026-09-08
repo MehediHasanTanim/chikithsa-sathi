@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, Vital } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { ClinicalAccessService } from './clinical-access.service';
 import type { CreateVitalDto } from './dto/create-vital.dto';
@@ -28,7 +28,7 @@ export type PublicVital = {
 @Injectable()
 export class VitalsService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly access: ClinicalAccessService,
   ) {}
 
@@ -40,7 +40,7 @@ export class VitalsService {
     const encounter = await this.access.assertWrite(user, encounterId);
     this.assertNotEmpty(dto);
 
-    const vital = await this.prisma.vital.create({
+    const vital = await this.repository.vital.create({
       data: this.toCreateData(encounter.patientId, encounterId, user.id, dto),
     });
     return this.toPublic(vital);
@@ -48,7 +48,7 @@ export class VitalsService {
 
   async list(user: AuthenticatedUser, encounterId: string): Promise<PublicVital[]> {
     await this.access.assertRead(user, encounterId);
-    const vitals = await this.prisma.vital.findMany({
+    const vitals = await this.repository.vital.findMany({
       where: { encounterId },
       orderBy: { recordedAt: 'desc' },
     });
@@ -64,7 +64,7 @@ export class VitalsService {
     await this.access.assertWrite(user, vital.encounterId);
     this.assertNotEmpty(dto);
 
-    const updated = await this.prisma.vital.update({
+    const updated = await this.repository.vital.update({
       where: { id: vitalId },
       data: this.toUpdateData(vital, dto),
     });
@@ -73,7 +73,7 @@ export class VitalsService {
 
   async listForPatient(user: AuthenticatedUser, patientId: string): Promise<PublicVital[]> {
     await this.access.assertPatientRead(user, patientId);
-    const vitals = await this.prisma.vital.findMany({
+    const vitals = await this.repository.vital.findMany({
       where: { patientId },
       orderBy: { recordedAt: 'desc' },
     });
@@ -148,7 +148,7 @@ export class VitalsService {
   }
 
   private async findVital(vitalId: string): Promise<Vital> {
-    const vital = await this.prisma.vital.findUnique({ where: { id: vitalId } });
+    const vital = await this.repository.vital.findUnique({ where: { id: vitalId } });
     if (!vital) {
       throw new NotFoundException({
         code: ErrorCode.VitalNotFound,

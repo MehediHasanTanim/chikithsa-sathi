@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Investigation, InvestigationStatus } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { ClinicalAccessService } from './clinical-access.service';
 import type { CreateInvestigationDto } from './dto/create-investigation.dto';
@@ -11,14 +11,14 @@ import type { UpdateInvestigationDto } from './dto/update-investigation.dto';
 @Injectable()
 export class InvestigationsService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly access: ClinicalAccessService,
   ) {}
 
   /** Distinct investigation names previously ordered in any chamber. */
   async catalog(user: AuthenticatedUser): Promise<Array<{ name: string }>> {
     await this.access.assertClinicalUser(user);
-    return this.prisma.investigation.findMany({
+    return this.repository.investigation.findMany({
       distinct: ['name'],
       select: { name: true },
       orderBy: { name: 'asc' },
@@ -31,7 +31,7 @@ export class InvestigationsService {
     dto: CreateInvestigationDto,
   ): Promise<Investigation> {
     await this.access.assertWrite(user, encounterId);
-    return this.prisma.investigation.create({
+    return this.repository.investigation.create({
       data: {
         encounterId,
         name: dto.name,
@@ -45,7 +45,7 @@ export class InvestigationsService {
 
   async list(user: AuthenticatedUser, encounterId: string): Promise<Investigation[]> {
     await this.access.assertRead(user, encounterId);
-    return this.prisma.investigation.findMany({
+    return this.repository.investigation.findMany({
       where: { encounterId },
       orderBy: { orderedAt: 'asc' },
     });
@@ -59,7 +59,7 @@ export class InvestigationsService {
     const investigation = await this.findInvestigation(investigationId);
     await this.access.assertWrite(user, investigation.encounterId);
 
-    return this.prisma.investigation.update({
+    return this.repository.investigation.update({
       where: { id: investigationId },
       data: {
         ...(dto.status !== undefined ? { status: dto.status } : {}),
@@ -71,7 +71,7 @@ export class InvestigationsService {
   }
 
   private async findInvestigation(investigationId: string): Promise<Investigation> {
-    const investigation = await this.prisma.investigation.findUnique({
+    const investigation = await this.repository.investigation.findUnique({
       where: { id: investigationId },
     });
     if (!investigation) {

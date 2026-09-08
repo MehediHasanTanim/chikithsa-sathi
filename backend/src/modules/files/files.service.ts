@@ -8,7 +8,7 @@ import { AuditAction, FileObject, FileStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import { StorageService } from '@infrastructure/storage/storage.service';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { AuditService } from '@modules/auth/services/audit.service';
@@ -38,7 +38,7 @@ const ALLOWED_CONTENT_TYPES: Record<string, string[]> = {
 @Injectable()
 export class FilesService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly storage: StorageService,
     private readonly permissions: PermissionsService,
     private readonly audit?: AuditService,
@@ -48,7 +48,7 @@ export class FilesService {
     this.assertValidFile(dto);
 
     const storageKey = this.generateKey(user.id, dto.fileName);
-    const file = await this.prisma.fileObject.create({
+    const file = await this.repository.fileObject.create({
       data: {
         storageKey,
         originalName: dto.fileName,
@@ -93,7 +93,7 @@ export class FilesService {
       throw this.invalid('Uploaded object metadata does not match the requested upload');
     }
     if (metadata.scanStatus === 'INFECTED') {
-      await this.prisma.fileObject.update({
+      await this.repository.fileObject.update({
         where: { id: file.id },
         data: { status: FileStatus.FAILED },
       });
@@ -103,7 +103,7 @@ export class FilesService {
       return { fileId: file.id, status: FileStatus.UPLOADING };
     }
 
-    await this.prisma.fileObject.update({
+    await this.repository.fileObject.update({
       where: { id: file.id },
       data: { status: FileStatus.AVAILABLE },
     });
@@ -129,7 +129,7 @@ export class FilesService {
   async remove(user: AuthenticatedUser, fileId: string): Promise<{ message: string }> {
     const file = await this.findFile(fileId);
     this.assertOwner(file, user.id);
-    await this.prisma.fileObject.update({
+    await this.repository.fileObject.update({
       where: { id: file.id },
       data: { status: FileStatus.DELETED, deletedAt: new Date() },
     });
@@ -158,7 +158,7 @@ export class FilesService {
   }
 
   private async findFile(fileId: string): Promise<FileObject> {
-    const file = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
+    const file = await this.repository.fileObject.findUnique({ where: { id: fileId } });
     if (!file) {
       throw new NotFoundException({
         code: ErrorCode.FileNotFound,
@@ -188,11 +188,11 @@ export class FilesService {
     fileId: string,
   ): Promise<void> {
     const [reportLinks, receiptLinks] = await Promise.all([
-      this.prisma.diagnosticReportFile.findMany({
+      this.repository.diagnosticReportFile.findMany({
         where: { fileId },
         select: { report: { select: { encounter: { select: { chamberId: true } } } } },
       }),
-      this.prisma.receipt.findMany({
+      this.repository.receipt.findMany({
         where: { fileId },
         select: { payment: { select: { chamberId: true } } },
       }),

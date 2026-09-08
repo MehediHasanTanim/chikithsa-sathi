@@ -8,7 +8,7 @@ import {
 import { AuditAction, ChamberMembership, MembershipStatus, UserRole } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { AuditService } from '@modules/auth/services/audit.service';
 import { PermissionsService } from '@modules/permissions/permissions.service';
@@ -39,14 +39,14 @@ const userSelect = { id: true, fullName: true, phone: true, email: true } as con
 @Injectable()
 export class StaffService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly permissions: PermissionsService,
     private readonly notifications: NotificationsService,
     private readonly audit?: AuditService,
   ) {}
 
   async list(chamberId: string): Promise<PublicStaffMembership[]> {
-    const memberships = await this.prisma.chamberMembership.findMany({
+    const memberships = await this.repository.chamberMembership.findMany({
       where: { chamberId, status: { not: MembershipStatus.REMOVED } },
       include: { user: { select: userSelect } },
       orderBy: { createdAt: 'asc' },
@@ -65,7 +65,7 @@ export class StaffService {
     this.assertStaffRole(dto.role);
     await this.assertRoleAssignable(actorMembership.role, dto.role);
 
-    const target = await this.prisma.user.findUnique({
+    const target = await this.repository.user.findUnique({
       where: { phone: dto.phone },
       select: userSelect,
     });
@@ -78,7 +78,7 @@ export class StaffService {
       });
     }
 
-    const existing = await this.prisma.chamberMembership.findUnique({
+    const existing = await this.repository.chamberMembership.findUnique({
       where: { chamberId_userId: { chamberId, userId: target.id } },
     });
     if (
@@ -93,7 +93,7 @@ export class StaffService {
       });
     }
 
-    const membership = await this.prisma.chamberMembership.upsert({
+    const membership = await this.repository.chamberMembership.upsert({
       where: { chamberId_userId: { chamberId, userId: target.id } },
       create: {
         chamberId,
@@ -149,7 +149,7 @@ export class StaffService {
       await this.assertRoleAssignable(actorMembership.role, membership.role);
     }
 
-    const updated = await this.prisma.chamberMembership.update({
+    const updated = await this.repository.chamberMembership.update({
       where: { id: membership.id },
       data: {
         ...(dto.role !== undefined ? { role: dto.role } : {}),
@@ -190,7 +190,7 @@ export class StaffService {
     this.assertNotSelf(membership, user.id);
     this.assertMutableStaffMembership(membership);
 
-    const updated = await this.prisma.chamberMembership.update({
+    const updated = await this.repository.chamberMembership.update({
       where: { id: membership.id },
       data: { status: MembershipStatus.REMOVED, removedAt: new Date() },
       include: { user: { select: userSelect } },
@@ -220,7 +220,7 @@ export class StaffService {
         details: [],
       });
     }
-    await this.prisma.chamberMembership.update({
+    await this.repository.chamberMembership.update({
       where: { id: membership.id },
       data: { invitedAt: new Date() },
     });
@@ -228,7 +228,7 @@ export class StaffService {
   }
 
   private async findMembership(membershipId: string): Promise<ChamberMembership> {
-    const membership = await this.prisma.chamberMembership.findUnique({
+    const membership = await this.repository.chamberMembership.findUnique({
       where: { id: membershipId },
     });
     if (!membership) throw this.notFound(ErrorCode.StaffNotFound, 'Staff membership was not found');

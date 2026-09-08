@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppointmentStatus, EncounterStatus, PaymentStatus, RefundStatus } from '@prisma/client';
 
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 import type { AnalyticsDashboardQueryDto } from './dto/analytics-dashboard-query.dto';
@@ -12,7 +12,7 @@ type DateRange = { start: Date; end: Date };
 @Injectable()
 export class AnalyticsService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly permissions: PermissionsService,
   ) {}
 
@@ -41,23 +41,23 @@ export class AnalyticsService {
       refunded,
       encounters,
     ] = await Promise.all([
-      this.prisma.queueEntry.findMany({
+      this.repository.queueEntry.findMany({
         where: { chamberId: query.chamberId, queueDate: { gte: range.start, lt: range.end } },
         distinct: ['patientId'],
         select: { patientId: true },
       }),
-      this.prisma.appointment.count({ where: appointmentWhere }),
-      this.prisma.encounter.count({
+      this.repository.appointment.count({ where: appointmentWhere }),
+      this.repository.encounter.count({
         where: {
           ...encounterWhere,
           status: { in: [EncounterStatus.COMPLETED, EncounterStatus.LOCKED] },
         },
       }),
-      this.prisma.appointment.count({
+      this.repository.appointment.count({
         where: { ...appointmentWhere, status: AppointmentStatus.NO_SHOW },
       }),
-      this.prisma.payment.aggregate({ where: paymentWhere, _sum: { amount: true } }),
-      this.prisma.paymentRefund.aggregate({
+      this.repository.payment.aggregate({ where: paymentWhere, _sum: { amount: true } }),
+      this.repository.paymentRefund.aggregate({
         where: {
           status: RefundStatus.PROCESSED,
           processedAt: { gte: range.start, lt: range.end },
@@ -65,7 +65,7 @@ export class AnalyticsService {
         },
         _sum: { amount: true },
       }),
-      this.prisma.encounter.findMany({
+      this.repository.encounter.findMany({
         where: {
           ...encounterWhere,
           status: { in: [EncounterStatus.COMPLETED, EncounterStatus.LOCKED] },
@@ -102,7 +102,7 @@ export class AnalyticsService {
     await this.permissions.requirePermissions(user.id, query.chamberId, ['payments.read']);
     const range = this.range(query);
     const [gross, refunded, paymentCount] = await Promise.all([
-      this.prisma.payment.aggregate({
+      this.repository.payment.aggregate({
         where: {
           chamberId: query.chamberId,
           receivedAt: { gte: range.start, lt: range.end },
@@ -110,7 +110,7 @@ export class AnalyticsService {
         },
         _sum: { amount: true },
       }),
-      this.prisma.paymentRefund.aggregate({
+      this.repository.paymentRefund.aggregate({
         where: {
           status: RefundStatus.PROCESSED,
           processedAt: { gte: range.start, lt: range.end },
@@ -118,7 +118,7 @@ export class AnalyticsService {
         },
         _sum: { amount: true },
       }),
-      this.prisma.payment.count({
+      this.repository.payment.count({
         where: { chamberId: query.chamberId, receivedAt: { gte: range.start, lt: range.end } },
       }),
     ]);
@@ -138,11 +138,11 @@ export class AnalyticsService {
     await this.permissions.requirePermissions(user.id, query.chamberId, ['patients.read']);
     const range = this.range(query);
     const [totalLinked, newlyLinked, visits] = await Promise.all([
-      this.prisma.patientChamber.count({ where: { chamberId: query.chamberId } }),
-      this.prisma.patientChamber.count({
+      this.repository.patientChamber.count({ where: { chamberId: query.chamberId } }),
+      this.repository.patientChamber.count({
         where: { chamberId: query.chamberId, createdAt: { gte: range.start, lt: range.end } },
       }),
-      this.prisma.queueEntry.findMany({
+      this.repository.queueEntry.findMany({
         where: { chamberId: query.chamberId, queueDate: { gte: range.start, lt: range.end } },
         distinct: ['patientId'],
         select: { patientId: true },

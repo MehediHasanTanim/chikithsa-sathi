@@ -15,7 +15,7 @@ import {
 import { randomInt } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 import type { CreatePrescriptionDto, PrescriptionItemDto } from './dto/create-prescription.dto';
@@ -76,7 +76,7 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 @Injectable()
 export class PrescriptionsService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly permissions: PermissionsService,
     private readonly events: PrescriptionEventsService,
   ) {}
@@ -138,7 +138,7 @@ export class PrescriptionsService {
       throw this.invalid('Only draft or AI-assisted prescriptions can be edited');
     }
 
-    const updated = await this.prisma.prescription.update({
+    const updated = await this.repository.prescription.update({
       where: { id: prescription.id },
       data: {
         ...(dto.language !== undefined ? { language: dto.language } : {}),
@@ -170,7 +170,7 @@ export class PrescriptionsService {
       throw this.invalid('Only draft or AI-assisted prescriptions can be submitted for review');
     }
 
-    const updated = await this.prisma.prescription.update({
+    const updated = await this.repository.prescription.update({
       where: { id: prescription.id },
       data: {
         status: PrescriptionStatus.REVIEW_REQUIRED,
@@ -216,7 +216,7 @@ export class PrescriptionsService {
     }
 
     // Conditional update guards against concurrent finalization attempts.
-    const result = await this.prisma.prescription.updateMany({
+    const result = await this.repository.prescription.updateMany({
       where: { id: prescription.id, status: PrescriptionStatus.REVIEW_REQUIRED },
       data: {
         status: PrescriptionStatus.FINALIZED,
@@ -246,7 +246,7 @@ export class PrescriptionsService {
       throw this.invalid('Only finalized prescriptions can be delivered');
     }
 
-    const updated = await this.prisma.prescription.update({
+    const updated = await this.repository.prescription.update({
       where: { id: prescription.id },
       data: { status: PrescriptionStatus.DELIVERED, deliveredAt: new Date() },
       include: this.prescriptionInclude(),
@@ -281,7 +281,7 @@ export class PrescriptionsService {
     const newVersion = previousVersion + 1;
     const changes = JSON.parse(JSON.stringify({ items: dto.items ?? [] })) as Prisma.InputJsonValue;
 
-    const amendment = await this.prisma.transaction(async (tx) => {
+    const amendment = await this.repository.transaction(async (tx) => {
       const created = await tx.prescriptionAmendment.create({
         data: {
           prescriptionId: prescription.id,
@@ -328,7 +328,7 @@ export class PrescriptionsService {
   }> {
     const prescription = await this.findPrescription(prescriptionId);
     await this.permissions.requirePermissions(user.id, prescription.chamberId, ['encounters.read']);
-    const amendments = await this.prisma.prescriptionAmendment.findMany({
+    const amendments = await this.repository.prescriptionAmendment.findMany({
       where: { prescriptionId: prescription.id },
       orderBy: { createdAt: 'asc' as const },
     });
@@ -377,7 +377,7 @@ export class PrescriptionsService {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         const prescriptionNumber = this.generateNumber();
-        return await this.prisma.prescription.create({
+        return await this.repository.prescription.create({
           data: {
             prescriptionNumber,
             chamberId: encounter.chamberId,
@@ -441,7 +441,7 @@ export class PrescriptionsService {
     ownerDoctorId: string;
     status: EncounterStatus;
   }> {
-    const encounter = await this.prisma.encounter.findUnique({
+    const encounter = await this.repository.encounter.findUnique({
       where: { id: encounterId },
       select: {
         id: true,
@@ -468,7 +468,7 @@ export class PrescriptionsService {
   }
 
   private async findPrescription(prescriptionId: string): Promise<PrescriptionWithItems> {
-    const prescription = await this.prisma.prescription.findUnique({
+    const prescription = await this.repository.prescription.findUnique({
       where: { id: prescriptionId },
       include: this.prescriptionInclude(),
     });

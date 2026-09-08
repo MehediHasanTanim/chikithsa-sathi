@@ -2,7 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { DoctorMedicineFavorite, Medicine, MembershipStatus, UserRole } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { DoctorsService } from '@modules/doctors/doctors.service';
 import type { AddFavoriteDto } from './dto/add-favorite.dto';
@@ -12,7 +12,7 @@ type FavoriteWithMedicine = DoctorMedicineFavorite & { medicine: Medicine };
 @Injectable()
 export class MedicinesService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly doctors: DoctorsService,
   ) {}
 
@@ -28,13 +28,13 @@ export class MedicinesService {
           ],
         }
       : { isActive: true };
-    return this.prisma.medicine.findMany({ where, orderBy: { genericName: 'asc' }, take: 50 });
+    return this.repository.medicine.findMany({ where, orderBy: { genericName: 'asc' }, take: 50 });
   }
 
   async listFavorites(user: AuthenticatedUser): Promise<FavoriteWithMedicine[]> {
     await this.assertClinicalUser(user);
     const profile = await this.doctors.getOrCreateProfile(user.id);
-    return this.prisma.doctorMedicineFavorite.findMany({
+    return this.repository.doctorMedicineFavorite.findMany({
       where: { doctorId: profile.id },
       include: { medicine: true },
       orderBy: { usageCount: 'desc' },
@@ -44,10 +44,10 @@ export class MedicinesService {
   async addFavorite(user: AuthenticatedUser, dto: AddFavoriteDto): Promise<FavoriteWithMedicine> {
     await this.assertClinicalUser(user);
     const profile = await this.doctors.getOrCreateProfile(user.id);
-    const medicine = await this.prisma.medicine.findUnique({ where: { id: dto.medicineId } });
+    const medicine = await this.repository.medicine.findUnique({ where: { id: dto.medicineId } });
     if (!medicine) throw this.notFound();
 
-    return this.prisma.doctorMedicineFavorite.upsert({
+    return this.repository.doctorMedicineFavorite.upsert({
       where: { doctorId_medicineId: { doctorId: profile.id, medicineId: dto.medicineId } },
       create: { doctorId: profile.id, medicineId: dto.medicineId },
       update: {},
@@ -58,7 +58,7 @@ export class MedicinesService {
   async removeFavorite(user: AuthenticatedUser, favoriteId: string): Promise<{ message: string }> {
     await this.assertClinicalUser(user);
     const profile = await this.doctors.getOrCreateProfile(user.id);
-    const deleted = await this.prisma.doctorMedicineFavorite.deleteMany({
+    const deleted = await this.repository.doctorMedicineFavorite.deleteMany({
       where: { id: favoriteId, doctorId: profile.id },
     });
     if (deleted.count === 0) throw this.notFound();
@@ -66,7 +66,7 @@ export class MedicinesService {
   }
 
   private async assertClinicalUser(user: AuthenticatedUser): Promise<void> {
-    const membership = await this.prisma.chamberMembership.findFirst({
+    const membership = await this.repository.chamberMembership.findFirst({
       where: {
         userId: user.id,
         status: MembershipStatus.ACTIVE,

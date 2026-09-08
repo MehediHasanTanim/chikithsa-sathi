@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type DoctorProfile } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import type { UpdateDoctorDto } from './dto/update-doctor.dto';
 import type { UpdateProfessionalProfileDto } from './dto/update-professional-profile.dto';
@@ -30,19 +30,19 @@ export type PublicDoctorProfile = {
 
 @Injectable()
 export class DoctorsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Repository() private readonly repository: DatabaseRepository) {}
 
   async getOrCreateProfile(userId: string): Promise<DoctorProfile> {
-    const existing = await this.prisma.doctorProfile.findUnique({ where: { userId } });
+    const existing = await this.repository.doctorProfile.findUnique({ where: { userId } });
     if (existing) return existing;
 
-    const user = await this.prisma.user.findUnique({
+    const user = await this.repository.user.findUnique({
       where: { id: userId },
       select: { fullName: true },
     });
     if (!user) throw this.notFound();
 
-    return this.prisma.doctorProfile.create({
+    return this.repository.doctorProfile.create({
       data: { userId, fullName: user.fullName },
     });
   }
@@ -53,7 +53,7 @@ export class DoctorsService {
 
   async updateProfile(user: AuthenticatedUser, dto: UpdateDoctorDto): Promise<PublicDoctorProfile> {
     const profile = await this.getOrCreateProfile(user.id);
-    const updated = await this.prisma.doctorProfile.update({
+    const updated = await this.repository.doctorProfile.update({
       where: { id: profile.id },
       data: {
         ...(dto.fullName !== undefined ? { fullName: dto.fullName } : {}),
@@ -71,7 +71,7 @@ export class DoctorsService {
     dto: UpdateProfessionalProfileDto,
   ): Promise<PublicDoctorProfile> {
     const profile = await this.getOrCreateProfile(user.id);
-    const updated = await this.prisma.doctorProfile.update({
+    const updated = await this.repository.doctorProfile.update({
       where: { id: profile.id },
       data: {
         ...(dto.specialization !== undefined ? { specialization: dto.specialization } : {}),

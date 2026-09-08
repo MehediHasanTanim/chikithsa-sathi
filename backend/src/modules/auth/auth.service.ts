@@ -8,7 +8,7 @@ import { AuditAction, Prisma, UserStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { AuthenticatedUser, RequestContext } from './auth.types';
@@ -21,7 +21,7 @@ import { TokenService } from './services/token.service';
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly password: PasswordService,
     private readonly otp: OtpService,
     private readonly tokens: TokenService,
@@ -34,8 +34,8 @@ export class AuthService {
     await this.rateLimit.enforce('otp', this.rateLimitKey(dto.phone, context.ipAddress));
     const email = dto.email?.toLowerCase();
     const [phoneOwner, emailOwner] = await Promise.all([
-      this.prisma.user.findUnique({ where: { phone: dto.phone }, select: { id: true } }),
-      email ? this.prisma.user.findUnique({ where: { email }, select: { id: true } }) : null,
+      this.repository.user.findUnique({ where: { phone: dto.phone }, select: { id: true } }),
+      email ? this.repository.user.findUnique({ where: { email }, select: { id: true } }) : null,
     ]);
     if (phoneOwner)
       throw this.conflict(ErrorCode.AuthPhoneAlreadyExists, 'Phone number is already registered');
@@ -44,7 +44,7 @@ export class AuthService {
 
     let user;
     try {
-      user = await this.prisma.user.create({
+      user = await this.repository.user.create({
         data: {
           phone: dto.phone,
           email,
@@ -82,7 +82,7 @@ export class AuthService {
 
   async login(dto: LoginDto, context: RequestContext) {
     await this.rateLimit.enforce('login', this.rateLimitKey(dto.phone, context.ipAddress));
-    const user = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+    const user = await this.repository.user.findUnique({ where: { phone: dto.phone } });
     if (!user) throw this.invalidCredentials();
     this.ensureAccountCanLogIn(user.status, user.lockedUntil);
 
@@ -92,7 +92,7 @@ export class AuthService {
     }
 
     const expiresAt = this.tokens.refreshExpiry();
-    const session = await this.prisma.userSession.create({
+    const session = await this.repository.userSession.create({
       data: {
         userId: user.id,
         refreshTokenHash: 'pending',
@@ -105,7 +105,7 @@ export class AuthService {
       },
     });
     const issued = await this.tokens.issue(user.id, session.id, session.tokenVersion);
-    await this.prisma.transaction(async (tx) => {
+    await this.repository.transaction(async (tx) => {
       await tx.user.update({
         where: { id: user.id },
         data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
@@ -125,7 +125,7 @@ export class AuthService {
 
   async refresh(refreshToken: string, context: RequestContext) {
     const payload = await this.tokens.verifyRefresh(refreshToken);
-    const session = await this.prisma.userSession.findUnique({
+    const session = await this.repository.userSession.findUnique({
       where: { id: payload.sessionId },
       include: { user: true },
     });
@@ -147,7 +147,7 @@ export class AuthService {
       throw this.invalidRefresh();
 
     const nextVersion = session.tokenVersion + 1;
-    const rotated = await this.prisma.userSession.updateMany({
+    const rotated = await this.repository.userSession.updateMany({
       where: {
         id: session.id,
         tokenVersion: session.tokenVersion,
@@ -159,7 +159,7 @@ export class AuthService {
     if (rotated.count !== 1) throw this.invalidRefresh();
 
     const issued = await this.tokens.issue(session.userId, session.id, nextVersion);
-    await this.prisma.userSession.update({
+    await this.repository.userSession.update({
       where: { id: session.id },
       data: {
         refreshTokenHash: await this.password.hash(issued.refreshToken),
@@ -175,7 +175,7 @@ export class AuthService {
     if (payload.sub !== user.id || payload.sessionId !== user.sessionId)
       throw this.invalidRefresh();
 
-    const revoked = await this.prisma.userSession.updateMany({
+    const revoked = await this.repository.userSession.updateMany({
       where: { id: payload.sessionId, userId: user.id, revokedAt: null },
       data: { revokedAt: new Date(), tokenVersion: { increment: 1 } },
     });
@@ -194,7 +194,7 @@ export class AuthService {
     const nextAttempts = currentAttempts + 1;
     const maxAttempts = this.config.getOrThrow<number>('jwt.maxLoginAttempts');
     const lockoutSeconds = this.config.getOrThrow<number>('jwt.lockoutSeconds');
-    await this.prisma.user.update({
+    await this.repository.user.update({
       where: { id: userId },
       data:
         nextAttempts >= maxAttempts

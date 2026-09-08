@@ -1,12 +1,12 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import { RedisService } from '@infrastructure/cache/redis.service';
 
 @Injectable()
 export class HealthService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly redis: RedisService,
   ) {}
 
@@ -16,7 +16,7 @@ export class HealthService {
 
   async ready() {
     try {
-      await Promise.all([this.prisma.ping(), this.redis.ping()]);
+      await Promise.all([this.repository.ping(), this.redis.ping()]);
       return { status: 'ok', timestamp: new Date().toISOString() };
     } catch {
       // Do not reveal dependency names, hostnames, or connection details to clients.

@@ -7,7 +7,7 @@ import {
 import { Schedule, ScheduleBreak } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { ChamberAccessService } from '@modules/chambers/services/chamber-access.service';
 import type { CreateScheduleDto } from './dto/create-schedule.dto';
@@ -33,13 +33,13 @@ const scheduleInclude = { breaks: { orderBy: { startTime: 'asc' as const } } };
 @Injectable()
 export class SchedulesService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly chamberAccess: ChamberAccessService,
   ) {}
 
   async list(user: AuthenticatedUser, chamberId: string): Promise<PublicSchedule[]> {
     await this.chamberAccess.assertMember(user.id, chamberId);
-    const schedules = await this.prisma.schedule.findMany({
+    const schedules = await this.repository.schedule.findMany({
       where: { chamberId },
       include: scheduleInclude,
       orderBy: { dayOfWeek: 'asc' },
@@ -64,7 +64,7 @@ export class SchedulesService {
       dto.endTime,
     );
 
-    const schedule = await this.prisma.schedule.create({
+    const schedule = await this.repository.schedule.create({
       data: {
         chamberId,
         doctorId: membership.chamber.ownerDoctorId,
@@ -112,7 +112,7 @@ export class SchedulesService {
       schedule.id,
     );
 
-    const updated = await this.prisma.transaction(async (tx) => {
+    const updated = await this.repository.transaction(async (tx) => {
       if (dto.breaks) {
         await tx.scheduleBreak.deleteMany({ where: { scheduleId: schedule.id } });
       }
@@ -147,12 +147,12 @@ export class SchedulesService {
   async remove(user: AuthenticatedUser, scheduleId: string): Promise<{ message: string }> {
     const schedule = await this.findSchedule(scheduleId);
     await this.chamberAccess.assertOwner(user.id, schedule.chamberId);
-    await this.prisma.schedule.delete({ where: { id: schedule.id } });
+    await this.repository.schedule.delete({ where: { id: schedule.id } });
     return { message: 'Schedule deleted' };
   }
 
   private async findSchedule(scheduleId: string): Promise<Schedule> {
-    const schedule = await this.prisma.schedule.findUnique({ where: { id: scheduleId } });
+    const schedule = await this.repository.schedule.findUnique({ where: { id: scheduleId } });
     if (!schedule) throw this.notFound();
     return schedule;
   }
@@ -165,7 +165,7 @@ export class SchedulesService {
     endTime: string,
     excludeId?: string,
   ): Promise<void> {
-    const overlapping = await this.prisma.schedule.findFirst({
+    const overlapping = await this.repository.schedule.findFirst({
       where: {
         chamberId,
         doctorId,

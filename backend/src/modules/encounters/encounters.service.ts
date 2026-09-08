@@ -7,7 +7,7 @@ import {
 import { Encounter, EncounterStatus, Prisma } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 import { EncounterEventsService } from './encounter-events.service';
@@ -35,7 +35,7 @@ export type PublicEncounter = {
 @Injectable()
 export class EncountersService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly permissions: PermissionsService,
     private readonly events: EncounterEventsService,
   ) {}
@@ -44,14 +44,14 @@ export class EncountersService {
     await this.permissions.requirePermissions(user.id, dto.chamberId, ['encounters.create']);
     const chamber = await this.findChamber(dto.chamberId);
 
-    const link = await this.prisma.patientChamber.findUnique({
+    const link = await this.repository.patientChamber.findUnique({
       where: { patientId_chamberId: { patientId: dto.patientId, chamberId: dto.chamberId } },
       select: { id: true },
     });
     if (!link) throw this.invalid('Patient is not linked to this chamber');
 
     if (dto.appointmentId) {
-      const appointment = await this.prisma.appointment.findUnique({
+      const appointment = await this.repository.appointment.findUnique({
         where: { id: dto.appointmentId },
       });
       if (
@@ -61,7 +61,7 @@ export class EncountersService {
       ) {
         throw this.invalid('Appointment does not match the chamber and patient');
       }
-      const existing = await this.prisma.encounter.findUnique({
+      const existing = await this.repository.encounter.findUnique({
         where: { appointmentId: dto.appointmentId },
         select: { id: true },
       });
@@ -69,7 +69,7 @@ export class EncountersService {
     }
 
     if (dto.queueEntryId) {
-      const queueEntry = await this.prisma.queueEntry.findUnique({
+      const queueEntry = await this.repository.queueEntry.findUnique({
         where: { id: dto.queueEntryId },
       });
       if (
@@ -79,14 +79,14 @@ export class EncountersService {
       ) {
         throw this.invalid('Queue entry does not match the chamber and patient');
       }
-      const existing = await this.prisma.encounter.findUnique({
+      const existing = await this.repository.encounter.findUnique({
         where: { queueEntryId: dto.queueEntryId },
         select: { id: true },
       });
       if (existing) throw this.conflict('An encounter already exists for this queue entry');
     }
 
-    const encounter = await this.prisma.encounter.create({
+    const encounter = await this.repository.encounter.create({
       data: {
         chamberId: dto.chamberId,
         patientId: dto.patientId,
@@ -113,7 +113,7 @@ export class EncountersService {
     const encounter = await this.loadAndAssert(user, encounterId, 'encounters.update');
     this.assertEditable(encounter);
 
-    const updated = await this.prisma.encounter.update({
+    const updated = await this.repository.encounter.update({
       where: { id: encounter.id },
       data: { chiefComplaint: dto.chiefComplaint },
     });
@@ -167,7 +167,7 @@ export class EncountersService {
         break;
     }
 
-    const updated = await this.prisma.encounter.update({ where: { id: encounterId }, data });
+    const updated = await this.repository.encounter.update({ where: { id: encounterId }, data });
     event?.(encounterId);
     return this.toPublic(updated);
   }
@@ -177,7 +177,7 @@ export class EncountersService {
     encounterId: string,
     permission: string,
   ): Promise<Encounter> {
-    const encounter = await this.prisma.encounter.findUnique({ where: { id: encounterId } });
+    const encounter = await this.repository.encounter.findUnique({ where: { id: encounterId } });
     if (!encounter) throw this.notFound();
     await this.permissions.requirePermissions(user.id, encounter.chamberId, [permission]);
     return encounter;
@@ -201,7 +201,7 @@ export class EncountersService {
     ownerDoctorId: string;
     timezone: string;
   }> {
-    const chamber = await this.prisma.chamber.findUnique({
+    const chamber = await this.repository.chamber.findUnique({
       where: { id: chamberId },
       select: { id: true, ownerDoctorId: true, timezone: true },
     });

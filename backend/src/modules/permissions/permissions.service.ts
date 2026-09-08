@@ -2,7 +2,7 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import {
   ChamberAccessService,
   type ActiveMembership,
@@ -12,12 +12,12 @@ import { PERMISSION_CODES } from './permissions.constants';
 @Injectable()
 export class PermissionsService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly chamberAccess: ChamberAccessService,
   ) {}
 
   async listPermissions(): Promise<{ code: string; description: string | null }[]> {
-    const permissions = await this.prisma.permission.findMany({ orderBy: { code: 'asc' } });
+    const permissions = await this.repository.permission.findMany({ orderBy: { code: 'asc' } });
     return permissions.map((permission) => ({
       code: permission.code,
       description: permission.description,
@@ -30,7 +30,7 @@ export class PermissionsService {
     if (role === UserRole.DOCTOR || role === UserRole.PLATFORM_ADMIN) {
       return new Set(PERMISSION_CODES);
     }
-    const roleRecord = await this.prisma.role.findUnique({
+    const roleRecord = await this.repository.role.findUnique({
       where: { name: role },
       include: { permissions: { include: { permission: true } } },
     });

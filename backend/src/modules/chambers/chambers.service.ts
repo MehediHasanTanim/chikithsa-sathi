@@ -3,7 +3,7 @@ import { ChamberStatus, MembershipStatus, Prisma, UserRole } from '@prisma/clien
 import { randomInt } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { DoctorsService } from '@modules/doctors/doctors.service';
 import type { ChamberWithOwner } from './services/chamber-access.service';
@@ -40,7 +40,7 @@ const CHAMBER_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 @Injectable()
 export class ChambersService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly doctors: DoctorsService,
   ) {}
 
@@ -54,7 +54,7 @@ export class ChambersService {
   }
 
   async list(user: AuthenticatedUser): Promise<PublicChamber[]> {
-    const chambers = await this.prisma.chamber.findMany({
+    const chambers = await this.repository.chamber.findMany({
       where: {
         OR: [
           { owner: { userId: user.id } },
@@ -68,7 +68,7 @@ export class ChambersService {
   }
 
   async update(chamberId: string, dto: UpdateChamberDto): Promise<PublicChamber> {
-    const chamber = await this.prisma.chamber.update({
+    const chamber = await this.repository.chamber.update({
       where: { id: chamberId },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
@@ -94,7 +94,7 @@ export class ChambersService {
   }
 
   async setStatus(chamberId: string, status: ChamberStatus): Promise<PublicChamber> {
-    const chamber = await this.prisma.chamber.update({
+    const chamber = await this.repository.chamber.update({
       where: { id: chamberId },
       data: { status },
       include: { owner: { select: { id: true, fullName: true } } },
@@ -133,7 +133,7 @@ export class ChambersService {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         const chamberCode = this.generateChamberCode();
-        return await this.prisma.transaction(async (tx) => {
+        return await this.repository.transaction(async (tx) => {
           const chamber = await tx.chamber.create({
             data: {
               ownerDoctorId: doctorId,

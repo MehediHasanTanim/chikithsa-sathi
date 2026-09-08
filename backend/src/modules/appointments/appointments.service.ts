@@ -9,7 +9,7 @@ import { randomInt } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
 import { offsetPaginationMeta, toOffsetPagination } from '@common/utils/pagination.util';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 import { AppointmentEventsService } from './appointment-events.service';
@@ -52,7 +52,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 @Injectable()
 export class AppointmentsService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly permissions: PermissionsService,
     private readonly events: AppointmentEventsService,
   ) {}
@@ -82,8 +82,8 @@ export class AppointmentsService {
     };
 
     const [items, total] = await Promise.all([
-      this.prisma.appointment.findMany({ where, skip, take, orderBy: { scheduledAt: 'asc' } }),
-      this.prisma.appointment.count({ where }),
+      this.repository.appointment.findMany({ where, skip, take, orderBy: { scheduledAt: 'asc' } }),
+      this.repository.appointment.count({ where }),
     ]);
 
     return {
@@ -110,7 +110,7 @@ export class AppointmentsService {
       'appointments.update',
     ]);
 
-    const updated = await this.prisma.appointment.update({
+    const updated = await this.repository.appointment.update({
       where: { id: appointment.id },
       data: {
         ...(dto.type !== undefined ? { type: dto.type } : {}),
@@ -159,7 +159,7 @@ export class AppointmentsService {
       throw this.invalid('A completed appointment cannot be cancelled');
     }
 
-    const updated = await this.prisma.appointment.update({
+    const updated = await this.repository.appointment.update({
       where: { id: appointment.id },
       data: {
         status: AppointmentStatus.CANCELLED,
@@ -179,7 +179,7 @@ export class AppointmentsService {
       throw this.invalid('Only booked appointments can be confirmed');
     }
 
-    const updated = await this.prisma.appointment.update({
+    const updated = await this.repository.appointment.update({
       where: { id: appointment.id },
       data: { status: AppointmentStatus.CONFIRMED },
     });
@@ -188,7 +188,7 @@ export class AppointmentsService {
   }
 
   private async findChamber(chamberId: string): Promise<ChamberContext> {
-    const chamber = await this.prisma.chamber.findUnique({
+    const chamber = await this.repository.chamber.findUnique({
       where: { id: chamberId },
       select: { id: true, ownerDoctorId: true, timezone: true },
     });
@@ -197,7 +197,7 @@ export class AppointmentsService {
   }
 
   private async assertPatientLinked(patientId: string, chamberId: string): Promise<void> {
-    const link = await this.prisma.patientChamber.findUnique({
+    const link = await this.repository.patientChamber.findUnique({
       where: { patientId_chamberId: { patientId, chamberId } },
       select: { id: true },
     });
@@ -205,7 +205,7 @@ export class AppointmentsService {
   }
 
   private async findAppointment(appointmentId: string): Promise<Appointment> {
-    const appointment = await this.prisma.appointment.findUnique({
+    const appointment = await this.repository.appointment.findUnique({
       where: { id: appointmentId },
     });
     if (!appointment)
@@ -289,7 +289,7 @@ export class AppointmentsService {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         const appointmentCode = this.generateAppointmentCode();
-        return await this.prisma.transaction(
+        return await this.repository.transaction(
           async (tx) => {
             await this.validateSlot(tx, chamber, scheduledAt);
             return tx.appointment.create({
@@ -334,7 +334,7 @@ export class AppointmentsService {
   ): Promise<Appointment> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
-        return await this.prisma.transaction(
+        return await this.repository.transaction(
           async (tx) => {
             await tx.$queryRaw`
               SELECT 1 FROM "Appointment" WHERE "id" = ${appointmentId}::uuid FOR UPDATE

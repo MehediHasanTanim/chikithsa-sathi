@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { AuditAction, Prisma } from '@prisma/client';
 
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { RequestContext } from '../auth.types';
 
 @Injectable()
 export class AuditService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Repository() private readonly repository: DatabaseRepository) {}
 
   async record(
     action: AuditAction,
@@ -14,7 +14,7 @@ export class AuditService {
     context: RequestContext,
     entityId = userId,
   ): Promise<void> {
-    await this.prisma.auditLog.create({
+    await this.repository.auditLog.create({
       data: {
         action,
         userId,
@@ -34,7 +34,7 @@ export class AuditService {
     entityId: string,
     metadata?: Prisma.InputJsonValue,
   ): Promise<void> {
-    await this.prisma.auditLog.create({
+    await this.repository.auditLog.create({
       data: {
         action,
         ...(userId ? { userId } : {}),

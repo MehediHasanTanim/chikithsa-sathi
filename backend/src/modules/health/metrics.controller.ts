@@ -8,11 +8,13 @@ import {
   VERSION_NEUTRAL,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 
 import { MetricsService } from '@common/metrics/metrics.service';
 
+@ApiTags('Metrics')
 @Controller({ path: 'metrics', version: VERSION_NEUTRAL })
 export class MetricsController {
   constructor(
@@ -21,6 +23,7 @@ export class MetricsController {
   ) {}
 
   @Get()
+  @ApiOperation({ summary: 'Scrape protected Prometheus metrics' })
   @Header('content-type', 'text/plain; version=0.0.4; charset=utf-8')
   scrape(@Req() request: FastifyRequest): string {
     const expected = this.config.get<string>('app.metricsToken');

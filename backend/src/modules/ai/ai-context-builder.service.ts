@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 
 export type AIContextInput = {
   chamberId: string;
@@ -18,7 +18,7 @@ export type AIContext = {
 
 @Injectable()
 export class AIContextBuilderService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Repository() private readonly repository: DatabaseRepository) {}
 
   async build(input: AIContextInput): Promise<AIContext> {
     let patientId = input.patientId;
@@ -27,7 +27,7 @@ export class AIContextBuilderService {
     let encounterCount = 0;
 
     if (patientId) {
-      const link = await this.prisma.patientChamber.findUnique({
+      const link = await this.repository.patientChamber.findUnique({
         where: { patientId_chamberId: { patientId, chamberId: input.chamberId } },
         select: { patientId: true },
       });
@@ -38,7 +38,7 @@ export class AIContextBuilderService {
           details: [],
         });
       }
-      const patient = await this.prisma.patient.findUnique({
+      const patient = await this.repository.patient.findUnique({
         where: { id: patientId },
         select: {
           dateOfBirth: true,
@@ -76,7 +76,7 @@ export class AIContextBuilderService {
     }
 
     if (encounterId) {
-      const encounter = await this.prisma.encounter.findUnique({
+      const encounter = await this.repository.encounter.findUnique({
         where: { id: encounterId },
         include: {
           notes: { orderBy: { createdAt: 'desc' }, take: 10 },

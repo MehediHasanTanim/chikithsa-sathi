@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { NotificationChannel, NotificationStatus, NotificationType, Prisma } from '@prisma/client';
 
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import { NotificationQueueService } from './notification-queue.service';
 
 type Recipient = {
@@ -22,12 +22,12 @@ type EnqueueInput = {
 @Injectable()
 export class NotificationsService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly queue: NotificationQueueService,
   ) {}
 
   async appointmentConfirmed(appointmentId: string): Promise<void> {
-    const appointment = await this.prisma.appointment.findUnique({
+    const appointment = await this.repository.appointment.findUnique({
       where: { id: appointmentId },
       select: {
         id: true,
@@ -50,7 +50,7 @@ export class NotificationsService {
   }
 
   async scheduleAppointmentReminder(appointmentId: string): Promise<void> {
-    const appointment = await this.prisma.appointment.findUnique({
+    const appointment = await this.repository.appointment.findUnique({
       where: { id: appointmentId },
       select: {
         id: true,
@@ -76,7 +76,7 @@ export class NotificationsService {
   }
 
   async queueCalled(queueEntryId: string): Promise<void> {
-    const entry = await this.prisma.queueEntry.findUnique({
+    const entry = await this.repository.queueEntry.findUnique({
       where: { id: queueEntryId },
       select: {
         id: true,
@@ -96,7 +96,7 @@ export class NotificationsService {
   }
 
   async prescriptionReady(prescriptionId: string): Promise<void> {
-    const prescription = await this.prisma.prescription.findUnique({
+    const prescription = await this.repository.prescription.findUnique({
       where: { id: prescriptionId },
       select: {
         id: true,
@@ -119,7 +119,7 @@ export class NotificationsService {
   }
 
   async paymentReceipt(paymentId: string): Promise<void> {
-    const payment = await this.prisma.payment.findUnique({
+    const payment = await this.repository.payment.findUnique({
       where: { id: paymentId },
       select: {
         id: true,
@@ -146,7 +146,7 @@ export class NotificationsService {
   }
 
   async staffInvitation(membershipId: string): Promise<void> {
-    const membership = await this.prisma.chamberMembership.findUnique({
+    const membership = await this.repository.chamberMembership.findUnique({
       where: { id: membershipId },
       select: {
         id: true,
@@ -188,7 +188,7 @@ export class NotificationsService {
   ): Promise<void> {
     const scheduledAt = input.scheduledAt ?? new Date();
     try {
-      const notification = await this.prisma.notification.create({
+      const notification = await this.repository.notification.create({
         data: {
           chamberId: input.chamberId,
           recipientUserId: input.recipient.userId,
@@ -211,7 +211,7 @@ export class NotificationsService {
   }
 
   async pendingCount(chamberId: string): Promise<number> {
-    return this.prisma.notification.count({
+    return this.repository.notification.count({
       where: { chamberId, status: { in: [NotificationStatus.PENDING, NotificationStatus.FAILED] } },
     });
   }

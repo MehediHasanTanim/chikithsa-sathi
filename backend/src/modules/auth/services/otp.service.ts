@@ -9,7 +9,7 @@ import { randomInt } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { RequestContext } from '../auth.types';
 import { AuditService } from './audit.service';
 import { OtpDeliveryService } from './otp-delivery.service';
@@ -18,7 +18,7 @@ import { PasswordService } from './password.service';
 @Injectable()
 export class OtpService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly password: PasswordService,
     private readonly delivery: OtpDeliveryService,
     private readonly audit: AuditService,
@@ -28,7 +28,7 @@ export class OtpService {
   async createRegistrationOtp(userId: string, phone: string): Promise<Date> {
     const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
     const expiresAt = new Date(Date.now() + this.expirySeconds() * 1000);
-    const otp = await this.prisma.otpVerification.upsert({
+    const otp = await this.repository.otpVerification.upsert({
       where: { userId_purpose: { userId, purpose: OtpPurpose.REGISTRATION } },
       create: {
         userId,
@@ -52,7 +52,7 @@ export class OtpService {
   }
 
   async verifyRegistrationOtp(phone: string, code: string, context: RequestContext): Promise<void> {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.repository.user.findUnique({
       where: { phone },
       include: { otpVerifications: { where: { purpose: OtpPurpose.REGISTRATION } } },
     });
@@ -76,7 +76,7 @@ export class OtpService {
     }
 
     if (!(await this.password.verify(otp.codeHash, code))) {
-      const updated = await this.prisma.otpVerification.update({
+      const updated = await this.repository.otpVerification.update({
         where: { id: otp.id },
         data: { attempts: { increment: 1 } },
       });
@@ -84,7 +84,7 @@ export class OtpService {
       throw this.invalidOtp();
     }
 
-    await this.prisma.transaction(async (tx) => {
+    await this.repository.transaction(async (tx) => {
       await tx.otpVerification.update({ where: { id: otp.id }, data: { consumedAt: new Date() } });
       await tx.user.update({
         where: { id: user.id },
@@ -95,7 +95,7 @@ export class OtpService {
   }
 
   async resendRegistrationOtp(phone: string, context: RequestContext): Promise<Date> {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.repository.user.findUnique({
       where: { phone },
       include: { otpVerifications: { where: { purpose: OtpPurpose.REGISTRATION } } },
     });

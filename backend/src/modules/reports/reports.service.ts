@@ -13,7 +13,7 @@ import {
 } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 import type { CreateReportDto } from './dto/create-report.dto';
@@ -48,7 +48,7 @@ export type PublicReport = {
 @Injectable()
 export class ReportsService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly permissions: PermissionsService,
   ) {}
 
@@ -61,7 +61,7 @@ export class ReportsService {
     await this.permissions.requirePermissions(user.id, encounter.chamberId, ['encounters.update']);
 
     if (dto.investigationId) {
-      const investigation = await this.prisma.investigation.findUnique({
+      const investigation = await this.repository.investigation.findUnique({
         where: { id: dto.investigationId },
       });
       if (!investigation || investigation.encounterId !== encounterId) {
@@ -70,7 +70,7 @@ export class ReportsService {
     }
 
     if (dto.fileId) {
-      const file = await this.prisma.fileObject.findUnique({ where: { id: dto.fileId } });
+      const file = await this.repository.fileObject.findUnique({ where: { id: dto.fileId } });
       if (!file || file.status !== FileStatus.AVAILABLE) {
         throw this.invalid('File is not available');
       }
@@ -86,7 +86,7 @@ export class ReportsService {
       }
     }
 
-    const report = await this.prisma.diagnosticReport.create({
+    const report = await this.repository.diagnosticReport.create({
       data: {
         patientId: encounter.patientId,
         encounterId,
@@ -103,7 +103,7 @@ export class ReportsService {
   async list(user: AuthenticatedUser, encounterId: string): Promise<PublicReport[]> {
     const encounter = await this.findEncounter(encounterId);
     await this.permissions.requirePermissions(user.id, encounter.chamberId, ['encounters.read']);
-    const reports = await this.prisma.diagnosticReport.findMany({
+    const reports = await this.repository.diagnosticReport.findMany({
       where: { encounterId },
       include: { files: { include: { file: true } } },
       orderBy: { createdAt: 'desc' },
@@ -112,7 +112,7 @@ export class ReportsService {
   }
 
   async get(user: AuthenticatedUser, reportId: string): Promise<PublicReport> {
-    const report = await this.prisma.diagnosticReport.findUnique({
+    const report = await this.repository.diagnosticReport.findUnique({
       where: { id: reportId },
       include: { files: { include: { file: true } } },
     });
@@ -125,7 +125,7 @@ export class ReportsService {
   private async findEncounter(
     encounterId: string,
   ): Promise<{ id: string; patientId: string; chamberId: string }> {
-    const encounter = await this.prisma.encounter.findUnique({
+    const encounter = await this.repository.encounter.findUnique({
       where: { id: encounterId },
       select: { id: true, patientId: true, chamberId: true },
     });

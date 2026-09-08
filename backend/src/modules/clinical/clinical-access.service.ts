@@ -7,7 +7,7 @@ import {
 import { Encounter, EncounterStatus, MembershipStatus, UserRole } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 
@@ -18,7 +18,7 @@ import { PermissionsService } from '@modules/permissions/permissions.service';
 @Injectable()
 export class ClinicalAccessService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly permissions: PermissionsService,
   ) {}
 
@@ -45,7 +45,7 @@ export class ClinicalAccessService {
   }
 
   async findEncounter(encounterId: string): Promise<Encounter> {
-    const encounter = await this.prisma.encounter.findUnique({ where: { id: encounterId } });
+    const encounter = await this.repository.encounter.findUnique({ where: { id: encounterId } });
     if (!encounter) {
       throw new NotFoundException({
         code: ErrorCode.EncounterNotFound,
@@ -58,11 +58,11 @@ export class ClinicalAccessService {
 
   /** Patient-level clinical read (used by patient-scoped endpoints). */
   async assertPatientRead(user: AuthenticatedUser, patientId: string): Promise<void> {
-    const links = await this.prisma.patientChamber.findMany({
+    const links = await this.repository.patientChamber.findMany({
       where: { patientId },
       select: { chamberId: true },
     });
-    const memberships = await this.prisma.chamberMembership.findMany({
+    const memberships = await this.repository.chamberMembership.findMany({
       where: { userId: user.id, status: MembershipStatus.ACTIVE },
       select: { chamberId: true },
     });
@@ -80,7 +80,7 @@ export class ClinicalAccessService {
 
   /** Require the user to hold a clinical role in at least one chamber. */
   async assertClinicalUser(user: AuthenticatedUser): Promise<void> {
-    const membership = await this.prisma.chamberMembership.findFirst({
+    const membership = await this.repository.chamberMembership.findFirst({
       where: {
         userId: user.id,
         status: MembershipStatus.ACTIVE,

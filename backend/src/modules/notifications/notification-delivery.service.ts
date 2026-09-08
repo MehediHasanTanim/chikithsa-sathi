@@ -1,23 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { NotificationChannel, NotificationStatus } from '@prisma/client';
 
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 
 @Injectable()
 export class NotificationDeliveryService {
   private readonly logger = new Logger(NotificationDeliveryService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Repository() private readonly repository: DatabaseRepository) {}
 
   async deliver(notificationId: string): Promise<void> {
-    const notification = await this.prisma.notification.findUnique({
+    const notification = await this.repository.notification.findUnique({
       where: { id: notificationId },
     });
     if (!notification || notification.status === NotificationStatus.SENT) return;
 
     try {
       this.send(notification.channel, notification.type, notification.id);
-      await this.prisma.notification.update({
+      await this.repository.notification.update({
         where: { id: notification.id },
         data: {
           status: NotificationStatus.SENT,
@@ -29,7 +29,7 @@ export class NotificationDeliveryService {
     } catch (error) {
       const message =
         error instanceof Error ? error.message.slice(0, 4_000) : 'Unknown delivery error';
-      await this.prisma.notification.update({
+      await this.repository.notification.update({
         where: { id: notification.id },
         data: {
           status: NotificationStatus.FAILED,

@@ -7,7 +7,7 @@ import {
 } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { DoctorsService } from '@modules/doctors/doctors.service';
 import type { SubmitVerificationDto } from './dto/submit-verification.dto';
@@ -29,7 +29,7 @@ const BLOCKING_STATUSES: VerificationStatus[] = [
 @Injectable()
 export class VerificationService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly doctors: DoctorsService,
   ) {}
 
@@ -59,7 +59,7 @@ export class VerificationService {
       dto.documents.map((document) => document.fileId),
     );
 
-    await this.prisma.transaction(async (tx) => {
+    await this.repository.transaction(async (tx) => {
       if (dto.bmdcNumber) {
         await tx.doctorProfile.update({
           where: { id: profile.id },
@@ -91,16 +91,16 @@ export class VerificationService {
   }
 
   private async getOrCreate(doctorId: string): Promise<ProfessionalVerification> {
-    const existing = await this.prisma.professionalVerification.findUnique({
+    const existing = await this.repository.professionalVerification.findUnique({
       where: { doctorId },
     });
     if (existing) return existing;
-    return this.prisma.professionalVerification.create({ data: { doctorId } });
+    return this.repository.professionalVerification.create({ data: { doctorId } });
   }
 
   private async assertOwnedVerificationFiles(userId: string, fileIds: string[]): Promise<void> {
     const uniqueFileIds = [...new Set(fileIds)];
-    const files = await this.prisma.fileObject.findMany({
+    const files = await this.repository.fileObject.findMany({
       where: {
         id: { in: uniqueFileIds },
         uploadedById: userId,

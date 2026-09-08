@@ -2,15 +2,15 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { Prisma } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Repository() private readonly repository: DatabaseRepository) {}
 
   async me(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.repository.user.findUnique({ where: { id: userId } });
     if (!user)
       throw new NotFoundException({
         code: ErrorCode.AuthAccountNotFound,
@@ -22,7 +22,7 @@ export class UsersService {
 
   async updateMe(userId: string, dto: UpdateUserDto) {
     try {
-      const user = await this.prisma.user.update({
+      const user = await this.repository.user.update({
         where: { id: userId },
         data: {
           ...(dto.fullName !== undefined ? { fullName: dto.fullName } : {}),

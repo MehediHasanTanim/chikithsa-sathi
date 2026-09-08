@@ -9,7 +9,7 @@ import { randomInt } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
 import { offsetPaginationMeta, toOffsetPagination } from '@common/utils/pagination.util';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 import type { CreatePaymentDto } from './dto/create-payment.dto';
@@ -49,7 +49,7 @@ const NUMBER_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 @Injectable()
 export class PaymentsService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly permissions: PermissionsService,
     private readonly events: PaymentEventsService,
   ) {}
@@ -63,7 +63,7 @@ export class PaymentsService {
     this.assertValidAmount(dto.amount);
 
     if (idempotencyKey) {
-      const existing = await this.prisma.payment.findUnique({
+      const existing = await this.repository.payment.findUnique({
         where: { chamberId_idempotencyKey: { chamberId: dto.chamberId, idempotencyKey } },
         include: this.paymentInclude(),
       });
@@ -109,14 +109,14 @@ export class PaymentsService {
     };
 
     const [items, total] = await Promise.all([
-      this.prisma.payment.findMany({
+      this.repository.payment.findMany({
         where,
         skip,
         take,
         orderBy: { receivedAt: 'desc' },
         include: this.paymentInclude(),
       }),
-      this.prisma.payment.count({ where }),
+      this.repository.payment.count({ where }),
     ]);
 
     return {
@@ -144,7 +144,7 @@ export class PaymentsService {
     patientName: string;
     chamberName: string;
   }> {
-    const payment = await this.prisma.payment.findUnique({
+    const payment = await this.repository.payment.findUnique({
       where: { id: paymentId },
       select: {
         id: true,
@@ -163,7 +163,7 @@ export class PaymentsService {
     }
     await this.permissions.requirePermissions(user.id, payment.chamberId, ['payments.read']);
 
-    const receipt = await this.prisma.receipt.findFirst({
+    const receipt = await this.repository.receipt.findFirst({
       where: { paymentId: payment.id },
       orderBy: { createdAt: 'desc' },
       select: { receiptNumber: true, issuedAt: true },
@@ -207,7 +207,7 @@ export class PaymentsService {
     // aborted one so it recalculates against the refund that acquired the row lock first.
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        return await this.prisma.transaction(
+        return await this.repository.transaction(
           async (tx) => {
             await tx.$queryRaw`
               SELECT 1 FROM "Payment" WHERE "id" = ${paymentId}::uuid FOR UPDATE
@@ -287,7 +287,7 @@ export class PaymentsService {
       try {
         const paymentNumber = this.generateNumber('PAY');
         const receiptNumber = this.generateNumber('RCPT');
-        return await this.prisma.payment.create({
+        return await this.repository.payment.create({
           data: {
             paymentNumber,
             chamberId: dto.chamberId,
@@ -309,7 +309,7 @@ export class PaymentsService {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
           // Collision on payment/receipt number, or a concurrent idempotent create.
           if (idempotencyKey) {
-            const existing = await this.prisma.payment.findUnique({
+            const existing = await this.repository.payment.findUnique({
               where: {
                 chamberId_idempotencyKey: { chamberId: dto.chamberId, idempotencyKey },
               },
@@ -332,7 +332,7 @@ export class PaymentsService {
   }
 
   private async assertPatientLinked(patientId: string, chamberId: string): Promise<void> {
-    const link = await this.prisma.patientChamber.findUnique({
+    const link = await this.repository.patientChamber.findUnique({
       where: { patientId_chamberId: { patientId, chamberId } },
       select: { patientId: true },
     });
@@ -350,7 +350,7 @@ export class PaymentsService {
     chamberId: string,
     patientId: string,
   ): Promise<void> {
-    const encounter = await this.prisma.encounter.findUnique({
+    const encounter = await this.repository.encounter.findUnique({
       where: { id: encounterId },
       select: { chamberId: true, patientId: true },
     });
@@ -368,7 +368,7 @@ export class PaymentsService {
     chamberId: string,
     patientId: string,
   ): Promise<void> {
-    const appointment = await this.prisma.appointment.findUnique({
+    const appointment = await this.repository.appointment.findUnique({
       where: { id: appointmentId },
       select: { chamberId: true, patientId: true },
     });
@@ -386,7 +386,7 @@ export class PaymentsService {
   }
 
   private async findPayment(paymentId: string): Promise<PaymentRecord> {
-    const payment = await this.prisma.payment.findUnique({
+    const payment = await this.repository.payment.findUnique({
       where: { id: paymentId },
       include: this.paymentInclude(),
     });

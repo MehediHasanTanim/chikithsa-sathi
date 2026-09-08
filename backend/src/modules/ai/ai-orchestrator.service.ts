@@ -8,7 +8,7 @@ import { AIRequestStatus, AuditAction, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { AuditService } from '@modules/auth/services/audit.service';
 import { PermissionsService } from '@modules/permissions/permissions.service';
@@ -38,7 +38,7 @@ export type AIGenerationOptions = {
 @Injectable()
 export class AIOrchestratorService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly permissions: PermissionsService,
     private readonly contextBuilder: AIContextBuilderService,
     private readonly safety: AISafetyService,
@@ -59,7 +59,7 @@ export class AIOrchestratorService {
     });
     const feature = dto.feature ?? 'GENERAL_ASSISTANCE';
     const promptHash = createHash('sha256').update(dto.prompt).digest('hex');
-    const request = await this.prisma.aIRequest.create({
+    const request = await this.repository.aIRequest.create({
       data: {
         chamberId: dto.chamberId,
         patientId: context.patientId,
@@ -103,7 +103,7 @@ export class AIOrchestratorService {
       });
       const content = this.safety.validateOutput(response.content);
       options.validateOutput?.(content);
-      const result = await this.prisma.transaction(async (tx) => {
+      const result = await this.repository.transaction(async (tx) => {
         const completedAt = new Date();
         const updated = await tx.aIRequest.update({
           where: { id: request.id },
@@ -174,7 +174,7 @@ export class AIOrchestratorService {
         : rejected
           ? this.badRequestCode(error)
           : ErrorCode.AIUnavailable;
-    await this.prisma.aIRequest.update({
+    await this.repository.aIRequest.update({
       where: { id: requestId },
       data: {
         status: rejected ? AIRequestStatus.REJECTED : AIRequestStatus.FAILED,

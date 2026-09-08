@@ -8,7 +8,7 @@ import { AppointmentStatus, Prisma, QueueEntry, QueueStatus } from '@prisma/clie
 import { randomUUID } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 import { QueueEventsService } from './queue-events.service';
@@ -42,7 +42,7 @@ type QueueEntryWithPatient = QueueEntry & {
 @Injectable()
 export class QueueService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly permissions: PermissionsService,
     private readonly events: QueueEventsService,
   ) {}
@@ -51,14 +51,14 @@ export class QueueService {
     await this.permissions.requirePermissions(user.id, dto.chamberId, ['queue.manage']);
     const chamber = await this.findChamber(dto.chamberId);
 
-    const link = await this.prisma.patientChamber.findUnique({
+    const link = await this.repository.patientChamber.findUnique({
       where: { patientId_chamberId: { patientId: dto.patientId, chamberId: dto.chamberId } },
       select: { id: true },
     });
     if (!link) throw this.invalid('Patient is not linked to this chamber');
 
     if (dto.appointmentId) {
-      const appointment = await this.prisma.appointment.findUnique({
+      const appointment = await this.repository.appointment.findUnique({
         where: { id: dto.appointmentId },
       });
       if (
@@ -77,7 +77,7 @@ export class QueueService {
     }
 
     const queueDate = this.todayInChamber(chamber.timezone);
-    const existing = await this.prisma.queueEntry.findFirst({
+    const existing = await this.repository.queueEntry.findFirst({
       where: {
         patientId: dto.patientId,
         chamberId: dto.chamberId,
@@ -93,7 +93,7 @@ export class QueueService {
     const queueNumber = await this.nextQueueNumber(dto.chamberId, queueDate);
     let entry: QueueEntry;
     try {
-      entry = await this.prisma.queueEntry.create({
+      entry = await this.repository.queueEntry.create({
         data: {
           chamberId: dto.chamberId,
           patientId: dto.patientId,
@@ -111,7 +111,7 @@ export class QueueService {
     }
 
     if (dto.appointmentId) {
-      await this.prisma.appointment.update({
+      await this.repository.appointment.update({
         where: { id: dto.appointmentId },
         data: { status: AppointmentStatus.CHECKED_IN, checkedInAt: new Date() },
       });
@@ -132,7 +132,7 @@ export class QueueService {
     const chamber = await this.findChamber(query.chamberId);
     const queueDate = this.todayInChamber(chamber.timezone);
 
-    const entries = await this.prisma.queueEntry.findMany({
+    const entries = await this.repository.queueEntry.findMany({
       where: {
         chamberId: query.chamberId,
         queueDate,
@@ -210,7 +210,7 @@ export class QueueService {
   }
 
   private async loadAndAssert(user: AuthenticatedUser, queueEntryId: string): Promise<QueueEntry> {
-    const entry = await this.prisma.queueEntry.findUnique({ where: { id: queueEntryId } });
+    const entry = await this.repository.queueEntry.findUnique({ where: { id: queueEntryId } });
     if (!entry) throw this.notFound();
     await this.permissions.requirePermissions(user.id, entry.chamberId, ['queue.manage']);
     return entry;
@@ -223,7 +223,7 @@ export class QueueService {
   ): Promise<QueueEntry> {
     let result: { count: number };
     try {
-      result = await this.prisma.queueEntry.updateMany({
+      result = await this.repository.queueEntry.updateMany({
         where: { id: queueEntryId, status: { in: expectedStatuses } },
         data,
       });
@@ -235,7 +235,7 @@ export class QueueService {
     }
     if (result.count !== 1) throw this.invalidTransition();
 
-    const entry = await this.prisma.queueEntry.findUnique({ where: { id: queueEntryId } });
+    const entry = await this.repository.queueEntry.findUnique({ where: { id: queueEntryId } });
     if (!entry) throw this.notFound();
     return entry;
   }
@@ -245,7 +245,7 @@ export class QueueService {
     ownerDoctorId: string;
     timezone: string;
   }> {
-    const chamber = await this.prisma.chamber.findUnique({
+    const chamber = await this.repository.chamber.findUnique({
       where: { id: chamberId },
       select: { id: true, ownerDoctorId: true, timezone: true },
     });
@@ -255,7 +255,7 @@ export class QueueService {
 
   /** Atomically allocate the next queue number for a chamber and date. */
   private async nextQueueNumber(chamberId: string, queueDate: Date): Promise<number> {
-    const rows = await this.prisma.$queryRaw<Array<{ lastNumber: number }>>`
+    const rows = await this.repository.$queryRaw<Array<{ lastNumber: number }>>`
       INSERT INTO "DailyQueueCounter" ("id", "chamberId", "queueDate", "lastNumber", "createdAt", "updatedAt")
       VALUES (${randomUUID()}::uuid, ${chamberId}::uuid, ${queueDate}::date, 1, now(), now())
       ON CONFLICT ("chamberId", "queueDate")

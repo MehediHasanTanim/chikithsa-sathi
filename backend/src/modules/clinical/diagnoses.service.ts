@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Diagnosis, EncounterDiagnosis } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { ClinicalAccessService } from './clinical-access.service';
 import type { AssignDiagnosisDto } from './dto/assign-diagnosis.dto';
@@ -12,7 +12,7 @@ type EncounterDiagnosisWithDiagnosis = EncounterDiagnosis & { diagnosis: Diagnos
 @Injectable()
 export class DiagnosesService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly access: ClinicalAccessService,
   ) {}
 
@@ -27,7 +27,7 @@ export class DiagnosesService {
           ],
         }
       : {};
-    return this.prisma.diagnosis.findMany({ where, orderBy: { name: 'asc' }, take: 50 });
+    return this.repository.diagnosis.findMany({ where, orderBy: { name: 'asc' }, take: 50 });
   }
 
   async list(
@@ -35,7 +35,7 @@ export class DiagnosesService {
     encounterId: string,
   ): Promise<EncounterDiagnosisWithDiagnosis[]> {
     await this.access.assertRead(user, encounterId);
-    return this.prisma.encounterDiagnosis.findMany({
+    return this.repository.encounterDiagnosis.findMany({
       where: { encounterId },
       include: { diagnosis: true },
       orderBy: { createdAt: 'asc' },
@@ -48,7 +48,9 @@ export class DiagnosesService {
     dto: AssignDiagnosisDto,
   ): Promise<EncounterDiagnosisWithDiagnosis> {
     await this.access.assertWrite(user, encounterId);
-    const diagnosis = await this.prisma.diagnosis.findUnique({ where: { id: dto.diagnosisId } });
+    const diagnosis = await this.repository.diagnosis.findUnique({
+      where: { id: dto.diagnosisId },
+    });
     if (!diagnosis) {
       throw new NotFoundException({
         code: ErrorCode.DiagnosisNotFound,
@@ -56,7 +58,7 @@ export class DiagnosesService {
         details: [],
       });
     }
-    return this.prisma.encounterDiagnosis.create({
+    return this.repository.encounterDiagnosis.create({
       data: {
         encounterId,
         diagnosisId: dto.diagnosisId,
@@ -73,7 +75,7 @@ export class DiagnosesService {
     encounterDiagnosisId: string,
   ): Promise<{ message: string }> {
     await this.access.assertWrite(user, encounterId);
-    const deleted = await this.prisma.encounterDiagnosis.deleteMany({
+    const deleted = await this.repository.encounterDiagnosis.deleteMany({
       where: { id: encounterDiagnosisId, encounterId },
     });
     if (deleted.count === 0) {

@@ -2,7 +2,7 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Chamber, ChamberMembership, MembershipStatus, UserRole } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 
 export type ChamberWithOwner = Chamber & {
   owner: { id: string; fullName: string };
@@ -12,10 +12,10 @@ export type ActiveMembership = ChamberMembership & { chamber: ChamberWithOwner }
 
 @Injectable()
 export class ChamberAccessService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Repository() private readonly repository: DatabaseRepository) {}
 
   async getActiveMembership(userId: string, chamberId: string): Promise<ActiveMembership | null> {
-    return this.prisma.chamberMembership.findUnique({
+    return this.repository.chamberMembership.findUnique({
       where: { chamberId_userId: { chamberId, userId } },
       include: {
         chamber: { include: { owner: { select: { id: true, fullName: true } } } },

@@ -9,7 +9,7 @@ import { randomInt } from 'node:crypto';
 
 import { ErrorCode } from '@common/constants/error-codes';
 import { offsetPaginationMeta, toOffsetPagination } from '@common/utils/pagination.util';
-import { PrismaService } from '@database/prisma/prisma.service';
+import { DatabaseRepository, Repository } from '@database/database.repository';
 import type { AuthenticatedUser } from '@modules/auth/auth.types';
 import { AuditService } from '@modules/auth/services/audit.service';
 import { PermissionsService } from '@modules/permissions/permissions.service';
@@ -56,7 +56,7 @@ const PATIENT_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 @Injectable()
 export class PatientsService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Repository() private readonly repository: DatabaseRepository,
     private readonly permissions: PermissionsService,
     private readonly audit?: AuditService,
   ) {}
@@ -87,8 +87,8 @@ export class PatientsService {
     };
 
     const [patients, total] = await Promise.all([
-      this.prisma.patient.findMany({ where, skip, take, orderBy: { createdAt: 'desc' } }),
-      this.prisma.patient.count({ where }),
+      this.repository.patient.findMany({ where, skip, take, orderBy: { createdAt: 'desc' } }),
+      this.repository.patient.count({ where }),
     ]);
 
     return {
@@ -115,8 +115,8 @@ export class PatientsService {
     };
 
     const [patients, total] = await Promise.all([
-      this.prisma.patient.findMany({ where, skip, take, orderBy: { createdAt: 'desc' } }),
-      this.prisma.patient.count({ where }),
+      this.repository.patient.findMany({ where, skip, take, orderBy: { createdAt: 'desc' } }),
+      this.repository.patient.count({ where }),
     ]);
 
     return {
@@ -139,7 +139,7 @@ export class PatientsService {
     await this.findPatient(patientId);
     await this.assertPatientAccess(user.id, patientId, 'patients.update');
 
-    const updated = await this.prisma.patient.update({
+    const updated = await this.repository.patient.update({
       where: { id: patientId },
       data: {
         ...(dto.fullName !== undefined
@@ -183,7 +183,7 @@ export class PatientsService {
     await this.assertPatientAccess(user.id, patientId, 'patients.update');
     await this.permissions.requirePermissions(user.id, dto.chamberId, ['patients.update']);
 
-    await this.prisma.patientChamber.upsert({
+    await this.repository.patientChamber.upsert({
       where: { patientId_chamberId: { patientId, chamberId: dto.chamberId } },
       create: { patientId, chamberId: dto.chamberId, notes: dto.notes },
       update: { notes: dto.notes },
@@ -193,7 +193,7 @@ export class PatientsService {
 
   async listAllergies(user: AuthenticatedUser, patientId: string) {
     await this.assertPatientAccess(user.id, patientId, 'patients.read');
-    return this.prisma.patientAllergy.findMany({
+    return this.repository.patientAllergy.findMany({
       where: { patientId },
       orderBy: { createdAt: 'desc' },
     });
@@ -201,7 +201,7 @@ export class PatientsService {
 
   async addAllergy(user: AuthenticatedUser, patientId: string, dto: CreatePatientAllergyDto) {
     await this.assertPatientAccess(user.id, patientId, 'patients.update');
-    return this.prisma.patientAllergy.create({
+    return this.repository.patientAllergy.create({
       data: {
         patientId,
         allergen: dto.allergen,
@@ -214,7 +214,7 @@ export class PatientsService {
 
   async removeAllergy(user: AuthenticatedUser, patientId: string, allergyId: string) {
     await this.assertPatientAccess(user.id, patientId, 'patients.update');
-    const deleted = await this.prisma.patientAllergy.deleteMany({
+    const deleted = await this.repository.patientAllergy.deleteMany({
       where: { id: allergyId, patientId },
     });
     if (deleted.count === 0) {
@@ -225,7 +225,7 @@ export class PatientsService {
 
   async listConditions(user: AuthenticatedUser, patientId: string) {
     await this.assertPatientAccess(user.id, patientId, 'patients.read');
-    return this.prisma.patientCondition.findMany({
+    return this.repository.patientCondition.findMany({
       where: { patientId },
       orderBy: { createdAt: 'desc' },
     });
@@ -233,7 +233,7 @@ export class PatientsService {
 
   async addCondition(user: AuthenticatedUser, patientId: string, dto: CreatePatientConditionDto) {
     await this.assertPatientAccess(user.id, patientId, 'patients.update');
-    return this.prisma.patientCondition.create({
+    return this.repository.patientCondition.create({
       data: {
         patientId,
         condition: dto.condition,
@@ -246,7 +246,7 @@ export class PatientsService {
 
   private async assertNotDuplicate(dto: CreatePatientDto): Promise<void> {
     if (!dto.phone || !dto.dateOfBirth) return;
-    const duplicate = await this.prisma.patient.findFirst({
+    const duplicate = await this.repository.patient.findFirst({
       where: {
         phone: dto.phone,
         fullName: dto.fullName,
@@ -272,7 +272,7 @@ export class PatientsService {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         const patientCode = this.generatePatientCode();
-        return await this.prisma.transaction(async (tx) => {
+        return await this.repository.transaction(async (tx) => {
           const patient = await tx.patient.create({
             data: {
               patientCode,
@@ -320,7 +320,7 @@ export class PatientsService {
   }
 
   private async findPatient(patientId: string): Promise<Patient> {
-    const patient = await this.prisma.patient.findUnique({ where: { id: patientId } });
+    const patient = await this.repository.patient.findUnique({ where: { id: patientId } });
     if (!patient) throw this.notFound(ErrorCode.PatientNotFound, 'Patient was not found');
     return patient;
   }
@@ -330,7 +330,7 @@ export class PatientsService {
     patientId: string,
     permission: string,
   ): Promise<void> {
-    const links = await this.prisma.patientChamber.findMany({
+    const links = await this.repository.patientChamber.findMany({
       where: { patientId },
       select: { chamberId: true },
     });
@@ -341,7 +341,7 @@ export class PatientsService {
   }
 
   private async accessibleChamberIds(userId: string): Promise<string[]> {
-    const memberships = await this.prisma.chamberMembership.findMany({
+    const memberships = await this.repository.chamberMembership.findMany({
       where: { userId, status: MembershipStatus.ACTIVE },
       select: { chamberId: true },
     });

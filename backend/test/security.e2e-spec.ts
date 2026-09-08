@@ -10,6 +10,7 @@ import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify
 import { MembershipStatus, UserRole } from '@prisma/client';
 
 import { ErrorCode } from '@common/constants/error-codes';
+import { DATABASE_REPOSITORY } from '@database/database.repository';
 import { HttpExceptionFilter } from '@common/filters/http-exception.filter';
 import { ResponseInterceptor } from '@common/interceptors/response.interceptor';
 import { PrismaService } from '@database/prisma/prisma.service';
@@ -63,6 +64,7 @@ describe('Security boundaries (e2e)', () => {
         FilesService,
         StaffService,
         { provide: PrismaService, useValue: prisma },
+        { provide: DATABASE_REPOSITORY, useExisting: PrismaService },
         { provide: StorageService, useValue: storage },
         { provide: PermissionsService, useValue: permissions },
         { provide: NotificationsService, useValue: { staffInvitation: jest.fn() } },
