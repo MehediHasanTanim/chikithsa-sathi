@@ -10,6 +10,9 @@ type RequestOptions = Omit<RequestInit, 'body' | 'headers'> & {
   accessToken?: string | null;
 };
 
+type ApiEnvelope<T> = { success: true; data: T; meta?: { requestId?: string } };
+type ApiFailureEnvelope = { success: false; error?: ApiErrorBody; requestId?: string };
+
 function createRequestId() {
   return (
     globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -43,18 +46,20 @@ export async function apiClient<T>(path: string, options: RequestOptions = {}): 
 
     if (response.status === 204) return undefined as T;
     const responseBody = (await response.json().catch(() => undefined)) as
-      T | ApiErrorBody | undefined;
+      ApiEnvelope<T> | ApiFailureEnvelope | ApiErrorBody | undefined;
     if (!response.ok) {
+      const failure = responseBody as ApiFailureEnvelope | undefined;
       throw new ApiError(
         parseMessage(
-          responseBody as ApiErrorBody | undefined,
+          failure?.error ?? (responseBody as ApiErrorBody | undefined),
           `Request failed (${response.status})`,
         ),
         response.status,
-        (responseBody as ApiErrorBody | undefined)?.code,
-        response.headers.get('x-request-id') ?? requestId,
+        failure?.error?.code ?? (responseBody as ApiErrorBody | undefined)?.code,
+        failure?.requestId ?? response.headers.get('x-request-id') ?? requestId,
       );
     }
+    if (responseBody && 'success' in responseBody && responseBody.success) return responseBody.data;
     return responseBody as T;
   } catch (error) {
     if (error instanceof ApiError) throw error;

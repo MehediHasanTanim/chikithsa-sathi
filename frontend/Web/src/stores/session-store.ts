@@ -1,19 +1,30 @@
 'use client';
 
 import { create } from 'zustand';
-
-export type SessionUser = { id: string; name: string; email: string; role: string };
+import type { AuthSession, AuthTokens, AuthUser, OnboardingProgress } from '@/types/auth';
 
 type SessionState = {
-  user: SessionUser | null;
+  user: AuthUser | null;
   accessToken: string | null;
-  setSession: (user: SessionUser, accessToken: string) => void;
+  refreshToken: string | null;
+  onboarding: OnboardingProgress | null;
+  hydrated: boolean;
+  setSession: (session: AuthSession) => void;
+  updateTokens: (tokens: AuthTokens) => void;
+  setOnboarding: (progress: OnboardingProgress | null) => void;
+  setHydrated: (hydrated: boolean) => void;
   clearSession: () => void;
 };
 
 export const useSessionStore = create<SessionState>((set) => ({
   user: null,
   accessToken: null,
-  setSession: (user, accessToken) => set({ user, accessToken }),
-  clearSession: () => set({ user: null, accessToken: null }),
+  refreshToken: null,
+  onboarding: null,
+  hydrated: false,
+  setSession: ({ user, ...tokens }) => set({ user, ...tokens }),
+  updateTokens: (tokens) => set(tokens),
+  setOnboarding: (onboarding) => set({ onboarding }),
+  setHydrated: (hydrated) => set({ hydrated }),
+  clearSession: () => set({ user: null, accessToken: null, refreshToken: null, onboarding: null }),
 }));
